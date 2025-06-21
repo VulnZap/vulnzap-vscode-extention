@@ -1,0 +1,202 @@
+{
+  "name": "inline-security-reviewer",
+  "displayName": "Inline Security Reviewer",
+  "description": "AI-powered real-time security analysis for JavaScript, TypeScript, Python, and Java code. Detects vulnerabilities like XSS, SQL injection, and weak cryptography with high accuracy.",
+  "version": "0.1.0",
+  "publisher": "vulnzap",
+  "icon": "icon.png",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/vulnzap/vscode-extension.git"
+  },
+  "license": "MIT",
+  "keywords": [
+    "security",
+    "vulnerability",
+    "static analysis",
+    "code review",
+    "ai-powered",
+    "linter"
+  ],
+  "bugs": {
+    "url": "https://github.com/vulnzap/vscode-extension/issues"
+  },
+  "homepage": "https://github.com/vulnzap/vscode-extension#readme",
+  "engines": {
+    "vscode": "^1.101.0"
+  },
+  "categories": [
+    "Linters",
+    "Programming Languages",
+    "Machine Learning"
+  ],
+  "activationEvents": [
+    "onLanguage:javascript",
+    "onLanguage:typescript",
+    "onLanguage:python",
+    "onLanguage:java"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "inlineSecurityReviewer.enable",
+        "title": "Enable Security Review",
+        "category": "Security"
+      },
+      {
+        "command": "inlineSecurityReviewer.disable",
+        "title": "Disable Security Review",
+        "category": "Security"
+      },
+      {
+        "command": "inlineSecurityReviewer.scanFile",
+        "title": "Scan Current File",
+        "category": "Security"
+      },
+      {
+        "command": "inlineSecurityReviewer.selectApiProvider",
+        "title": "Select AI Provider",
+        "category": "Security"
+      },
+      {
+        "command": "inlineSecurityReviewer.configureApiKeys",
+        "title": "Configure API Keys",
+        "category": "Security"
+      }
+    ],
+    "configuration": {
+      "title": "Inline Security Reviewer",
+      "properties": {
+        "inlineSecurityReviewer.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable/disable real-time security scanning"
+        },
+        "inlineSecurityReviewer.scanDelay": {
+          "type": "number",
+          "default": 1000,
+          "description": "Delay in milliseconds before scanning after code changes"
+        },
+        "inlineSecurityReviewer.severity": {
+          "type": "string",
+          "enum": [
+            "error",
+            "warning",
+            "info"
+          ],
+          "default": "warning",
+          "description": "Default severity level for security issues"
+        },
+        "inlineSecurityReviewer.apiProvider": {
+          "type": "string",
+          "enum": [
+            "openai",
+            "gemini",
+            "openrouter",
+            "vulnzap"
+          ],
+          "enumDescriptions": [
+            "OpenAI GPT models (GPT-3.5, GPT-4)",
+            "Google Gemini AI models",
+            "OpenRouter (access to various AI models)",
+            "VulnZap Custom API (specialized security analysis)"
+          ],
+          "default": "gemini",
+          "description": "Choose your preferred AI provider for security analysis"
+        },
+        "inlineSecurityReviewer.openaiApiKey": {
+          "type": "string",
+          "default": "",
+          "description": "OpenAI API key for GPT-powered security analysis"
+        },
+        "inlineSecurityReviewer.openaiModel": {
+          "type": "string",
+          "enum": [
+            "gpt-3.5-turbo",
+            "gpt-4",
+            "gpt-4-turbo"
+          ],
+          "default": "gpt-4",
+          "description": "OpenAI model to use for analysis"
+        },
+        "inlineSecurityReviewer.geminiApiKey": {
+          "type": "string",
+          "default": "",
+          "description": "Google Gemini API key for AI-powered security analysis"
+        },
+        "inlineSecurityReviewer.openrouterApiKey": {
+          "type": "string",
+          "default": "",
+          "description": "OpenRouter API key for accessing various AI models"
+        },
+        "inlineSecurityReviewer.openrouterModel": {
+          "type": "string",
+          "enum": [
+            "anthropic/claude-3-haiku",
+            "anthropic/claude-3-sonnet",
+            "anthropic/claude-3-opus",
+            "openai/gpt-3.5-turbo",
+            "openai/gpt-4",
+            "meta-llama/llama-2-70b-chat",
+            "mistralai/mixtral-8x7b-instruct"
+          ],
+          "default": "anthropic/claude-3-haiku",
+          "description": "OpenRouter model to use for analysis"
+        },
+        "inlineSecurityReviewer.vulnzapApiKey": {
+          "type": "string",
+          "default": "",
+          "description": "VulnZap API key for specialized security analysis"
+        },
+        "inlineSecurityReviewer.vulnzapApiUrl": {
+          "type": "string",
+          "default": "https://api.vulnzap.com",
+          "description": "VulnZap API base URL"
+        },
+        "inlineSecurityReviewer.googleSearchApiKey": {
+          "type": "string",
+          "default": "",
+          "description": "Google Search API key for vulnerability research (optional)"
+        },
+        "inlineSecurityReviewer.googleSearchEngineId": {
+          "type": "string",
+          "default": "",
+          "description": "Google Custom Search Engine ID for security research (optional)"
+        },
+        "inlineSecurityReviewer.enableAIAnalysis": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable AI-powered security analysis (requires API keys)"
+        },
+        "inlineSecurityReviewer.enableSearchEnhancement": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable Google search enhancement for vulnerability details"
+        },
+        "inlineSecurityReviewer.confidenceThreshold": {
+          "type": "number",
+          "default": 80,
+          "minimum": 50,
+          "maximum": 100,
+          "description": "Minimum confidence threshold (50-100%) for reporting security issues. Higher values reduce false positives."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./"
+  },
+  "devDependencies": {
+    "@types/node": "^16.18.126",
+    "@types/vscode": "^1.101.0",
+    "@vscode/test-electron": "^2.5.2",
+    "typescript": "^4.9.5"
+  },
+  "dependencies": {
+    "@google/genai": "^1.6.0",
+    "axios": "^1.6.0"
+  }
+}
