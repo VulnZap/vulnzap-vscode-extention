@@ -1,13 +1,13 @@
 # VulnZap - AI-Powered Security Reviewer for VS Code
 
-[![Version](https://img.shields.io/vscode-marketplace/v/vulnzap.inline-security-reviewer.svg)](https://marketplace.visualstudio.com/items?itemName=vulnzap.inline-security-reviewer)
-[![Downloads](https://img.shields.io/vscode-marketplace/d/vulnzap.inline-security-reviewer.svg)](https://marketplace.visualstudio.com/items?itemName=vulnzap.inline-security-reviewer)
-[![Rating](https://img.shields.io/vscode-marketplace/r/vulnzap.inline-security-reviewer.svg)](https://marketplace.visualstudio.com/items?itemName=vulnzap.inline-security-reviewer)
+[![Version](https://img.shields.io/vscode-marketplace/v/vulnzap.vulnzap.svg)](https://marketplace.visualstudio.com/items?itemName=vulnzap.vulnzap)
+[![Downloads](https://img.shields.io/vscode-marketplace/d/vulnzap.vulnzap.svg)](https://marketplace.visualstudio.com/items?itemName=vulnzap.vulnzap)
+[![Rating](https://img.shields.io/vscode-marketplace/r/vulnzap.vulnzap.svg)](https://marketplace.visualstudio.com/items?itemName=vulnzap.vulnzap)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 A powerful Visual Studio Code extension that provides **real-time, AI-powered security analysis** for your code. VulnZap detects vulnerabilities like XSS, SQL injection, weak cryptography, and more with high accuracy across multiple programming languages.
 
-![VulnZap Demo](https://raw.githubusercontent.com/vulnzap/vscode-extension/main/demo.gif)
+![VulnZap Demo](https://raw.githubusercontent.com/VulnZap/vulnzap-vscode-extention/main/demo.gif)
 
 ## ✨ Features
 
@@ -51,12 +51,12 @@ A powerful Visual Studio Code extension that provides **real-time, AI-powered se
 ### From VS Code Marketplace
 1. Open VS Code
 2. Press `Ctrl+Shift+X` (Windows/Linux) or `Cmd+Shift+X` (Mac)
-3. Search for "VulnZap" or "Inline Security Reviewer"
+3. Search for "VulnZap"
 4. Click **Install**
 
 ### From Command Line
 ```bash
-code --install-extension vulnzap.inline-security-reviewer
+code --install-extension vulnzap.vulnzap
 ```
 
 ## ⚙️ Setup & Configuration
@@ -127,7 +127,7 @@ The status bar shows current state:
 
 ## 📋 Configuration Options
 
-Open VS Code settings (`Ctrl+,`) and search for "Inline Security Reviewer":
+Open VS Code settings (`Ctrl+,`) and search for "VulnZap":
 
 ### Basic Settings
 ```json
@@ -210,8 +210,8 @@ const apiKey = process.env.API_KEY;
 
 1. **Clone the repository**
    ```bash
-   git clone https://github.com/vulnzap/vscode-extension.git
-   cd vscode-extension
+   git clone https://github.com/VulnZap/vulnzap-vscode-extention.git
+   cd vulnzap-vscode-extention
    ```
 
 2. **Install dependencies**
@@ -244,7 +244,7 @@ npm run vscode:prepublish
 
 ### Project Structure
 ```
-vulnzap-vscode-extension/
+vulnzap-vscode-extention/
 ├── src/
 │   ├── extension.ts          # Main extension entry point
 │   ├── securityAnalyzer.ts   # Core security analysis logic
@@ -279,7 +279,7 @@ vulnzap-vscode-extension/
    - Check Console for error messages
 
 2. **Extension Logs**
-   - View → Output → Select "Inline Security Reviewer"
+   - View → Output → Select "VulnZap"
    - Check for API errors or parsing issues
 
 3. **VS Code Debugging**
@@ -384,7 +384,7 @@ We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) f
 
 ### Getting Support
 
-- 📝 **GitHub Issues**: [Report bugs and request features](https://github.com/vulnzap/vscode-extension/issues)
+- 📝 **GitHub Issues**: [Report bugs and request features](https://github.com/VulnZap/vulnzap-vscode-extention/issues)
 - 📖 **Documentation**: Check VS Code settings for configuration options
 - 🔧 **API Status**: Verify provider service status
 - 💬 **Community**: Join discussions in our GitHub repository
@@ -400,7 +400,7 @@ We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) f
 - **More Languages**: Go, Rust, C++, PHP support
 
 ### Community Requests
-Vote for features and view progress on our [GitHub Discussions](https://github.com/vulnzap/vscode-extension/discussions) page.
+Vote for features and view progress on our [GitHub Discussions](https://github.com/VulnZap/vulnzap-vscode-extention/discussions) page.
 
 ## 📄 License
 
@@ -418,4 +418,4 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 **🛡️ Secure your code with AI-powered intelligence**
 
-Built with ❤️ by the VulnZap team | [Website](https://vulnzap.com) | [GitHub](https://github.com/vulnzap) | [Support](mailto:support@vulnzap.com) 
+Built with ❤️ by the VulnZap team | [Website](https://vulnzap.com) | [GitHub](https://github.com/VulnZap) | [Support](mailto:support@vulnzap.com) 

@@ -1,13 +1,13 @@
 {
-  "name": "inline-security-reviewer",
-  "displayName": "Inline Security Reviewer",
+  "name": "vulnzap",
+  "displayName": "VulnZap",
   "description": "AI-powered real-time security analysis for JavaScript, TypeScript, Python, and Java code. Detects vulnerabilities like XSS, SQL injection, and weak cryptography with high accuracy.",
   "version": "0.1.0",
   "publisher": "vulnzap",
   "icon": "icon.png",
   "repository": {
     "type": "git",
-    "url": "https://github.com/vulnzap/vscode-extension.git"
+    "url": "https://github.com/VulnZap/vulnzap-vscode-extention.git"
   },
   "license": "MIT",
   "keywords": [
@@ -19,9 +19,9 @@
     "linter"
   ],
   "bugs": {
-    "url": "https://github.com/vulnzap/vscode-extension/issues"
+    "url": "https://github.com/VulnZap/vulnzap-vscode-extention/issues"
   },
-  "homepage": "https://github.com/vulnzap/vscode-extension#readme",
+  "homepage": "https://github.com/VulnZap/vulnzap-vscode-extention#readme",
   "engines": {
     "vscode": "^1.101.0"
   },
