@@ -132,27 +132,27 @@ Open VS Code settings (`Ctrl+,`) and search for "VulnZap":
 ### Basic Settings
 ```json
 {
-  "inlineSecurityReviewer.enabled": true,
-  "inlineSecurityReviewer.scanDelay": 1000,
-  "inlineSecurityReviewer.severity": "warning",
-  "inlineSecurityReviewer.confidenceThreshold": 80
+  "vulnzap.enabled": true,
+  "vulnzap.scanDelay": 1000,
+  "vulnzap.severity": "warning",
+  "vulnzap.confidenceThreshold": 80
 }
 ```
 
 ### AI Provider Settings
 ```json
 {
-  "inlineSecurityReviewer.apiProvider": "gemini",
-  "inlineSecurityReviewer.enableAIAnalysis": true,
-  "inlineSecurityReviewer.enableSearchEnhancement": true
+  "vulnzap.apiProvider": "gemini",
+  "vulnzap.enableAIAnalysis": true,
+  "vulnzap.enableSearchEnhancement": true
 }
 ```
 
 ### Performance Settings
 ```json
 {
-  "inlineSecurityReviewer.scanDelay": 1000,
-  "inlineSecurityReviewer.confidenceThreshold": 80
+  "vulnzap.scanDelay": 1000,
+  "vulnzap.confidenceThreshold": 80
 }
 ```
 

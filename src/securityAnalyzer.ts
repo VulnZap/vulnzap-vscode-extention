@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import axios from 'axios';
 import { APIProviderManager, AISecurityResponse } from './apiProviders';
+import { ContextAnalyzer, CodeContext, SecurityContext } from './contextAnalyzer';
 
 export interface SecurityIssue {
     line: number;
@@ -18,39 +19,49 @@ export interface SecurityIssue {
 
 export class SecurityAnalyzer {
     private apiProviderManager: APIProviderManager;
+    private contextAnalyzer: ContextAnalyzer;
     private cache = new Map<string, { result: AISecurityResponse; timestamp: number }>();
-    private readonly CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
+    private readonly CACHE_DURATION = 10 * 60 * 1000; // 10 minutes for better performance
     private readonly MAX_CHUNK_SIZE = 4000; // Increased from 10000, but we'll chunk it
     private readonly MAX_FILE_SIZE = 50000; // Increased limit
 
     constructor() {
         this.apiProviderManager = new APIProviderManager();
+        this.contextAnalyzer = new ContextAnalyzer();
         
         // Listen for configuration changes to update the current provider
         vscode.workspace.onDidChangeConfiguration((event) => {
-            if (event.affectsConfiguration('inlineSecurityReviewer.apiProvider')) {
+            if (event.affectsConfiguration('vulnzap.apiProvider')) {
                 this.apiProviderManager.updateCurrentProvider();
             }
         });
     }
 
+
     async analyzeDocument(document: vscode.TextDocument): Promise<SecurityIssue[]> {
-        const aiEnabled = vscode.workspace.getConfiguration('inlineSecurityReviewer').get('enableAIAnalysis', true);
+        const aiEnabled = vscode.workspace.getConfiguration('vulnzap').get('enableAIAnalysis', true);
+        
+        // First, analyze the document context to understand its purpose and environment
+        const codeContext = await this.contextAnalyzer.analyzeDocumentContext(document);
+        console.log(`Context analysis: fileType=${codeContext.fileType}, framework=${codeContext.framework}, isTest=${codeContext.isTestFile}`);
         
         if (!aiEnabled) {
             console.log('AI analysis disabled, using basic analysis');
-            return this.fallbackToBasicAnalysis(document);
+            const basicIssues = this.fallbackToBasicAnalysis(document);
+            return this.filterIssuesWithContext(basicIssues, document, codeContext);
         }
 
         const currentProvider = this.apiProviderManager.getCurrentProvider();
         if (!currentProvider) {
             console.log('No API provider configured, falling back to basic analysis');
-            return this.fallbackToBasicAnalysis(document);
+            const basicIssues = this.fallbackToBasicAnalysis(document);
+            return this.filterIssuesWithContext(basicIssues, document, codeContext);
         }
 
         if (!currentProvider.isConfigured()) {
             console.log(`${currentProvider.displayName} not configured, falling back to basic analysis`);
-            return this.fallbackToBasicAnalysis(document);
+            const basicIssues = this.fallbackToBasicAnalysis(document);
+            return this.filterIssuesWithContext(basicIssues, document, codeContext);
         }
 
         try {
@@ -64,15 +75,18 @@ export class SecurityAnalyzer {
                 vscode.window.showWarningMessage(
                     `File too large (${text.length} chars). Using basic pattern matching only.`
                 );
-                return this.fallbackToBasicAnalysis(document);
+                const basicIssues = this.fallbackToBasicAnalysis(document);
+                return this.filterIssuesWithContext(basicIssues, document, codeContext);
             }
             
-            // Check cache first
-            const cacheKey = this.getCacheKey(text, languageId, currentProvider.name);
+            // Include context information in cache key for context-aware caching
+            const contextHash = this.getContextHash(codeContext);
+            const cacheKey = this.getCacheKey(text, languageId, currentProvider.name) + '_' + contextHash;
             const cached = this.cache.get(cacheKey);
             if (cached && Date.now() - cached.timestamp < this.CACHE_DURATION) {
                 console.log('Using cached analysis result');
-                return this.convertAIResponseToSecurityIssues(cached.result);
+                const cachedIssues = this.convertAIResponseToSecurityIssues(cached.result);
+                return this.filterIssuesWithContext(cachedIssues, document, codeContext);
             }
 
             // For files larger than chunk size, analyze in chunks
@@ -81,27 +95,29 @@ export class SecurityAnalyzer {
                 console.log('File large, analyzing in chunks...');
                 allIssues = await this.analyzeInChunks(text, languageId);
             } else {
-                // Get AI analysis through the provider manager
-                const aiResponse = await this.apiProviderManager.analyzeCode(text, languageId);
-                
-                // Enhance with search results if enabled
-                const enhancedResponse = await this.enhanceWithSearchResults(aiResponse, languageId);
+                // Enhance the AI prompt with context information
+                const contextEnhancedCode = this.buildContextEnhancedPrompt(text, languageId, codeContext);
+                const aiResponse = await this.apiProviderManager.analyzeCode(contextEnhancedCode, languageId);
                 
                 // Cache the result
-                this.cache.set(cacheKey, { result: enhancedResponse, timestamp: Date.now() });
+                this.cache.set(cacheKey, { result: aiResponse, timestamp: Date.now() });
                 
-                allIssues = this.convertAIResponseToSecurityIssues(enhancedResponse);
+                allIssues = this.convertAIResponseToSecurityIssues(aiResponse);
             }
             
             // Refine issue positioning for better accuracy
             const refinedIssues = this.refineIssueLocations(allIssues, document);
             
-            console.log(`Analysis complete: found ${refinedIssues.length} issues`);
-            return refinedIssues;
+            // Apply context-aware filtering to reduce false positives
+            const contextFilteredIssues = this.filterIssuesWithContext(refinedIssues, document, codeContext);
+            
+            console.log(`Analysis complete: found ${contextFilteredIssues.length} issues (filtered from ${refinedIssues.length} total)`);
+            return contextFilteredIssues;
         } catch (error) {
             console.error('AI analysis failed:', error);
             vscode.window.showErrorMessage(`AI analysis failed: ${error}`);
-            return this.fallbackToBasicAnalysis(document);
+            const basicIssues = this.fallbackToBasicAnalysis(document);
+            return this.filterIssuesWithContext(basicIssues, document, codeContext);
         }
     }
 
@@ -144,8 +160,7 @@ export class SecurityAnalyzer {
             try {
                 console.log(`Analyzing chunk ${i + 1}/${chunks.length}`);
                 const aiResponse = await this.apiProviderManager.analyzeCode(chunks[i].text, language);
-                const enhancedResponse = await this.enhanceWithSearchResults(aiResponse, language);
-                const chunkIssues = this.convertAIResponseToSecurityIssues(enhancedResponse);
+                const chunkIssues = this.convertAIResponseToSecurityIssues(aiResponse);
                 
                 // Adjust line numbers for chunk offset
                 chunkIssues.forEach(issue => {
@@ -175,50 +190,6 @@ export class SecurityAnalyzer {
             seen.add(key);
             return true;
         });
-    }
-
-    private async performSecuritySearch(searchQuery: string, language: string): Promise<{cves: string[], summaries: string[]}> {
-        try {
-            const enhancedQuery = `${searchQuery} ${language} security vulnerability CVE`;
-            const searchApiKey = vscode.workspace.getConfiguration('inlineSecurityReviewer').get<string>('googleSearchApiKey');
-            const searchEngineId = vscode.workspace.getConfiguration('inlineSecurityReviewer').get<string>('googleSearchEngineId');
-            
-            if (!searchApiKey || !searchEngineId) {
-                return { cves: [], summaries: [] };
-            }
-
-            const response = await axios.get('https://www.googleapis.com/customsearch/v1', {
-                params: {
-                    key: searchApiKey,
-                    cx: searchEngineId,
-                    q: enhancedQuery,
-                    num: 5
-                },
-                timeout: 5000
-            });
-
-            const items = response.data.items || [];
-            const cves: string[] = [];
-            const summaries: string[] = [];
-
-            for (const item of items) {
-                // Extract CVE numbers from title and snippet
-                const cveMatches = (item.title + ' ' + item.snippet).match(/CVE-\d{4}-\d{4,}/g);
-                if (cveMatches) {
-                    cves.push(...cveMatches);
-                }
-                
-                summaries.push(item.snippet);
-            }
-
-            return { 
-                cves: [...new Set(cves)].slice(0, 3), // Remove duplicates and limit
-                summaries: summaries.slice(0, 3)
-            };
-        } catch (error) {
-            console.error('Search API failed:', error);
-            return { cves: [], summaries: [] };
-        }
     }
 
     private convertAIResponseToSecurityIssues(aiResponse: AISecurityResponse): SecurityIssue[] {
@@ -291,6 +262,13 @@ export class SecurityAnalyzer {
             // Weak cryptography patterns
             'Math.random': [/Math\.random\s*\(\s*\)/g],
             'crypto': [/Math\.random/g, /Math\.floor\s*\(\s*Math\.random/g],
+            'md5': [/createHash\s*\(\s*['"`]md5['"`]\s*\)/g, /md5\s*\(/g],
+            'weak_crypto': [/createHash\s*\(\s*['"`](md5|sha1)['"`]\s*\)/g],
+            
+            // Hardcoded secrets patterns
+            'api_key': [/api.{0,10}key.{0,20}[:=]\s*['"`][^'"`\s]{10,}['"`]/gi, /['"`][a-zA-Z0-9]{20,}['"`]/g],
+            'secret': [/secret.{0,10}[:=]\s*['"`][^'"`\s]{8,}['"`]/gi, /password.{0,10}[:=]\s*['"`][^'"`\s]{6,}['"`]/gi],
+            'hardcoded': [/['"`][a-zA-Z0-9_-]{15,}['"`]/g],
             
             // Command injection patterns
             'os.system': [/os\.system\s*\(/g],
@@ -314,6 +292,10 @@ export class SecurityAnalyzer {
             patternsToTry = vulnerabilityPatterns['document.write'] || [];
         } else if (lowerMessage.includes('os.system') || lowerMessage.includes('system')) {
             patternsToTry = vulnerabilityPatterns['os.system'] || [];
+        } else if (lowerMessage.includes('md5') || lowerMessage.includes('weak') && lowerMessage.includes('hash')) {
+            patternsToTry = vulnerabilityPatterns['md5'] || [];
+        } else if (lowerMessage.includes('api key') || lowerMessage.includes('hardcoded') || lowerMessage.includes('secret')) {
+            patternsToTry = vulnerabilityPatterns['api_key'] || [];
         }
 
         // Try each pattern
@@ -349,7 +331,7 @@ export class SecurityAnalyzer {
      * @returns Filtered array of high-confidence security issues
      */
     private filterHighConfidenceIssues(issues: SecurityIssue[]): SecurityIssue[] {
-        const minConfidence = vscode.workspace.getConfiguration('inlineSecurityReviewer').get<number>('confidenceThreshold', 80);
+        const minConfidence = vscode.workspace.getConfiguration('vulnzap').get<number>('confidenceThreshold', 80);
         
         return issues.filter(issue => {
             // Apply confidence threshold
@@ -434,40 +416,7 @@ export class SecurityAnalyzer {
         return hash.toString();
     }
 
-    private async enhanceWithSearchResults(aiResponse: AISecurityResponse, language: string): Promise<AISecurityResponse> {
-        const searchEnabled = vscode.workspace.getConfiguration('inlineSecurityReviewer').get('enableSearchEnhancement', true);
-        
-        if (!searchEnabled) {
-            return aiResponse;
-        }
-
-        // Only enhance issues that have search queries
-        const enhancedIssues = await Promise.all(
-            aiResponse.issues.map(async (issue) => {
-                if (issue.searchQuery) {
-                    try {
-                        const searchResults = await this.performSecuritySearch(issue.searchQuery, language);
-                        return {
-                            ...issue,
-                            cve: [...(issue.cve || []), ...searchResults.cves],
-                            searchResults: searchResults.summaries
-                        };
-                    } catch (error) {
-                        console.error('Search enhancement failed:', error);
-                        return issue;
-                    }
-                }
-                return issue;
-            })
-        );
-
-        return {
-            ...aiResponse,
-            issues: enhancedIssues
-        };
-    }
-
-    private fallbackToBasicAnalysis(document: vscode.TextDocument): SecurityIssue[] {
+    public fallbackToBasicAnalysis(document: vscode.TextDocument): SecurityIssue[] {
         // Fallback to basic pattern matching if AI fails
         const basicRules = this.getBasicSecurityRules(document.languageId);
         const issues: SecurityIssue[] = [];
@@ -518,5 +467,140 @@ export class SecurityAnalyzer {
         ];
 
         return commonRules;
+    }
+
+    /**
+     * Filter security issues using context analysis to reduce false positives
+     */
+    private filterIssuesWithContext(
+        issues: SecurityIssue[], 
+        document: vscode.TextDocument, 
+        codeContext: CodeContext
+    ): SecurityIssue[] {
+        return issues.filter(issue => {
+            const securityContext = this.contextAnalyzer.analyzeSecurityContext(
+                document, 
+                issue.line, 
+                issue.column, 
+                codeContext
+            );
+
+            const isLikelyFalsePositive = this.contextAnalyzer.isLikelyFalsePositive(
+                issue, 
+                codeContext, 
+                securityContext
+            );
+
+            if (isLikelyFalsePositive) {
+                console.log(`Filtered false positive: ${issue.message} (context: ${this.getContextDescription(securityContext)})`);
+                return false;
+            }
+
+            // Adjust confidence based on context
+            if (issue.confidence) {
+                issue.confidence = this.adjustConfidenceBasedOnContext(issue.confidence, securityContext);
+            }
+
+            return true;
+        });
+    }
+
+    /**
+     * Generate a hash of the code context for caching purposes
+     */
+    private getContextHash(codeContext: CodeContext): string {
+        const contextString = JSON.stringify({
+            fileType: codeContext.fileType,
+            framework: codeContext.framework,
+            isTestFile: codeContext.isTestFile,
+            isConfigFile: codeContext.isConfigFile,
+            dependencies: codeContext.dependencies.slice(0, 10) // Limit for performance
+        });
+
+        let hash = 0;
+        for (let i = 0; i < contextString.length; i++) {
+            const char = contextString.charCodeAt(i);
+            hash = ((hash << 5) - hash) + char;
+            hash = hash & hash; // Convert to 32-bit integer
+        }
+        return hash.toString();
+    }
+
+    /**
+     * Build an enhanced prompt that includes context information for better AI analysis
+     */
+    private buildContextEnhancedPrompt(code: string, language: string, codeContext: CodeContext): string {
+        let contextInfo = `Context: This is a ${codeContext.fileType} file`;
+        
+        if (codeContext.framework) {
+            contextInfo += ` using ${codeContext.framework} framework`;
+        }
+        
+        if (codeContext.isTestFile) {
+            contextInfo += `. This appears to be a test file - be more lenient with security patterns that are acceptable in testing contexts.`;
+        }
+        
+        if (codeContext.isConfigFile) {
+            contextInfo += `. This is a configuration file - hardcoded values may be acceptable.`;
+        }
+
+        if (codeContext.dependencies.length > 0) {
+            const securityLibs = codeContext.dependencies.filter(dep => 
+                ['helmet', 'cors', 'bcrypt', 'validator', 'joi', 'yup', 'sanitize', 'escape'].some(lib => 
+                    dep.includes(lib)
+                )
+            );
+            if (securityLibs.length > 0) {
+                contextInfo += ` Security libraries detected: ${securityLibs.slice(0, 3).join(', ')}.`;
+            }
+        }
+
+        return `${contextInfo}\n\nCode to analyze:\n\`\`\`${language}\n${code}\n\`\`\``;
+    }
+
+    /**
+     * Adjust confidence score based on security context
+     */
+    private adjustConfidenceBasedOnContext(originalConfidence: number, securityContext: SecurityContext): number {
+        let adjustedConfidence = originalConfidence;
+
+        // Increase confidence for issues in production code with real user input
+        if (securityContext.dataFlowContext.hasUserInput && !securityContext.isInTestContext) {
+            adjustedConfidence = Math.min(100, adjustedConfidence + 10);
+        }
+
+        // Decrease confidence for issues with proper validation/sanitization
+        if (securityContext.hasInputValidation && securityContext.hasOutputSanitization) {
+            adjustedConfidence = Math.max(0, adjustedConfidence - 20);
+        }
+
+        // Decrease confidence for issues in string literals without user input
+        if (securityContext.isInStringLiteral && !securityContext.dataFlowContext.hasUserInput) {
+            adjustedConfidence = Math.max(0, adjustedConfidence - 15);
+        }
+
+        // Increase confidence when using security libraries
+        if (securityContext.usesSecurityLibrary) {
+            adjustedConfidence = Math.min(100, adjustedConfidence + 5);
+        }
+
+        return adjustedConfidence;
+    }
+
+    /**
+     * Get a human-readable description of the security context for logging
+     */
+    private getContextDescription(securityContext: SecurityContext): string {
+        const descriptions: string[] = [];
+        
+        if (securityContext.isInTestContext) descriptions.push('test');
+        if (securityContext.isInMockContext) descriptions.push('mock');
+        if (securityContext.isInCommentBlock) descriptions.push('comment');
+        if (securityContext.isInStringLiteral) descriptions.push('string');
+        if (securityContext.hasInputValidation) descriptions.push('validated');
+        if (securityContext.hasOutputSanitization) descriptions.push('sanitized');
+        if (securityContext.usesSecurityLibrary) descriptions.push('secured');
+        
+        return descriptions.join(', ') || 'unknown';
     }
 }

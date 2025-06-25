@@ -4,6 +4,7 @@ import { SecurityIssue } from './securityAnalyzer';
 export class DiagnosticProvider implements vscode.Disposable {
     private diagnosticCollection: vscode.DiagnosticCollection;
     private codeActionProvider: vscode.Disposable;
+    private securityViewProvider?: any; // Will be set by extension.ts
 
     constructor(context: vscode.ExtensionContext) {
         this.diagnosticCollection = vscode.languages.createDiagnosticCollection('security-reviewer');
@@ -83,10 +84,20 @@ export class DiagnosticProvider implements vscode.Disposable {
 
     clearDiagnostics(document: vscode.TextDocument) {
         this.diagnosticCollection.delete(document.uri);
+        if (this.securityViewProvider) {
+            this.securityViewProvider.clearSecurityIssues(document);
+        }
     }
 
     clearAll() {
         this.diagnosticCollection.clear();
+        if (this.securityViewProvider) {
+            this.securityViewProvider.clearAllSecurityIssues();
+        }
+    }
+
+    setSecurityViewProvider(provider: any) {
+        this.securityViewProvider = provider;
     }
 
     dispose() {

@@ -2,7 +2,7 @@
   "name": "vulnzap",
   "displayName": "VulnZap",
   "description": "AI-powered real-time security analysis for JavaScript, TypeScript, Python, and Java code. Detects vulnerabilities like XSS, SQL injection, and weak cryptography with high accuracy.",
-  "version": "0.1.0",
+  "version": "0.1.8",
   "publisher": "vulnzap",
   "icon": "icon.png",
   "repository": {
@@ -23,7 +23,7 @@
   },
   "homepage": "https://github.com/VulnZap/vulnzap-vscode-extention#readme",
   "engines": {
-    "vscode": "^1.101.0"
+    "vscode": "^1.74.0"
   },
   "categories": [
     "Linters",
@@ -34,51 +34,159 @@
     "onLanguage:javascript",
     "onLanguage:typescript",
     "onLanguage:python",
-    "onLanguage:java"
+    "onLanguage:java",
+    "onStartupFinished"
   ],
-  "main": "./out/extension.js",
+  "main": "./dist/extension.js",
   "contributes": {
     "commands": [
       {
-        "command": "inlineSecurityReviewer.enable",
+        "command": "vulnzap.enable",
         "title": "Enable Security Review",
         "category": "Security"
       },
       {
-        "command": "inlineSecurityReviewer.disable",
+        "command": "vulnzap.disable",
         "title": "Disable Security Review",
         "category": "Security"
       },
       {
-        "command": "inlineSecurityReviewer.scanFile",
+        "command": "vulnzap.scanFile",
         "title": "Scan Current File",
         "category": "Security"
       },
       {
-        "command": "inlineSecurityReviewer.selectApiProvider",
+        "command": "vulnzap.selectApiProvider",
         "title": "Select AI Provider",
         "category": "Security"
       },
       {
-        "command": "inlineSecurityReviewer.configureApiKeys",
+        "command": "vulnzap.configureApiKeys",
         "title": "Configure API Keys",
         "category": "Security"
+      },
+      {
+        "command": "vulnzap.toggle",
+        "title": "Toggle Security Review",
+        "category": "Security"
+      },
+      {
+        "command": "vulnzap.refreshSecurityView",
+        "title": "Refresh",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "vulnzap.clearAllIssues",
+        "title": "Clear All Issues",
+        "icon": "$(clear-all)"
+      },
+      {
+        "command": "vulnzap.scanWorkspace",
+        "title": "Scan Entire Workspace",
+        "icon": "$(search)"
       }
     ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "vulnzap-security",
+          "title": "VulnZap Security",
+          "icon": "$(shield)"
+        }
+      ]
+    },
+    "views": {
+      "vulnzap-security": [
+        {
+          "id": "vulnzap.securityView",
+          "name": "Security Analysis",
+          "when": "true"
+        }
+      ]
+    },
+    "menus": {
+      "commandPalette": [
+        {
+          "command": "vulnzap.enable",
+          "when": "true"
+        },
+        {
+          "command": "vulnzap.disable",
+          "when": "true"
+        },
+        {
+          "command": "vulnzap.scanFile",
+          "when": "editorIsOpen"
+        },
+        {
+          "command": "vulnzap.selectApiProvider",
+          "when": "true"
+        },
+        {
+          "command": "vulnzap.configureApiKeys",
+          "when": "true"
+        },
+        {
+          "command": "vulnzap.toggle",
+          "when": "true"
+        },
+        {
+          "command": "vulnzap.refreshSecurityView",
+          "when": "false"
+        },
+        {
+          "command": "vulnzap.clearAllIssues",
+          "when": "true"
+        },
+        {
+          "command": "vulnzap.scanWorkspace",
+          "when": "true"
+        }
+      ],
+      "view/title": [
+        {
+          "command": "vulnzap.refreshSecurityView",
+          "when": "view == vulnzap.securityView",
+          "group": "navigation"
+        },
+        {
+          "command": "vulnzap.scanWorkspace",
+          "when": "view == vulnzap.securityView",
+          "group": "navigation"
+        },
+        {
+          "command": "vulnzap.clearAllIssues",
+          "when": "view == vulnzap.securityView",
+          "group": "navigation"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "vulnzap.scanFile",
+          "when": "view == vulnzap.securityView && viewItem == file",
+          "group": "inline"
+        }
+      ]
+    },
     "configuration": {
-      "title": "Inline Security Reviewer",
+      "title": "VulnZap Security Scanner",
       "properties": {
-        "inlineSecurityReviewer.enabled": {
+        "vulnzap.enabled": {
           "type": "boolean",
           "default": true,
           "description": "Enable/disable real-time security scanning"
         },
-        "inlineSecurityReviewer.scanDelay": {
+        "vulnzap.scanDelay": {
           "type": "number",
           "default": 1000,
           "description": "Delay in milliseconds before scanning after code changes"
         },
-        "inlineSecurityReviewer.severity": {
+        "vulnzap.enableFastScan": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable fast scanning mode for faster results (may reduce accuracy slightly)"
+        },
+        "vulnzap.severity": {
           "type": "string",
           "enum": [
             "error",
@@ -88,7 +196,7 @@
           "default": "warning",
           "description": "Default severity level for security issues"
         },
-        "inlineSecurityReviewer.apiProvider": {
+        "vulnzap.apiProvider": {
           "type": "string",
           "enum": [
             "openai",
@@ -105,12 +213,12 @@
           "default": "gemini",
           "description": "Choose your preferred AI provider for security analysis"
         },
-        "inlineSecurityReviewer.openaiApiKey": {
+        "vulnzap.openaiApiKey": {
           "type": "string",
           "default": "",
           "description": "OpenAI API key for GPT-powered security analysis"
         },
-        "inlineSecurityReviewer.openaiModel": {
+        "vulnzap.openaiModel": {
           "type": "string",
           "enum": [
             "gpt-3.5-turbo",
@@ -120,17 +228,17 @@
           "default": "gpt-4",
           "description": "OpenAI model to use for analysis"
         },
-        "inlineSecurityReviewer.geminiApiKey": {
+        "vulnzap.geminiApiKey": {
           "type": "string",
           "default": "",
           "description": "Google Gemini API key for AI-powered security analysis"
         },
-        "inlineSecurityReviewer.openrouterApiKey": {
+        "vulnzap.openrouterApiKey": {
           "type": "string",
           "default": "",
           "description": "OpenRouter API key for accessing various AI models"
         },
-        "inlineSecurityReviewer.openrouterModel": {
+        "vulnzap.openrouterModel": {
           "type": "string",
           "enum": [
             "anthropic/claude-3-haiku",
@@ -144,56 +252,61 @@
           "default": "anthropic/claude-3-haiku",
           "description": "OpenRouter model to use for analysis"
         },
-        "inlineSecurityReviewer.vulnzapApiKey": {
+        "vulnzap.vulnzapApiKey": {
           "type": "string",
           "default": "",
           "description": "VulnZap API key for specialized security analysis"
         },
-        "inlineSecurityReviewer.vulnzapApiUrl": {
+        "vulnzap.vulnzapApiUrl": {
           "type": "string",
           "default": "https://api.vulnzap.com",
           "description": "VulnZap API base URL"
         },
-        "inlineSecurityReviewer.googleSearchApiKey": {
-          "type": "string",
-          "default": "",
-          "description": "Google Search API key for vulnerability research (optional)"
-        },
-        "inlineSecurityReviewer.googleSearchEngineId": {
-          "type": "string",
-          "default": "",
-          "description": "Google Custom Search Engine ID for security research (optional)"
-        },
-        "inlineSecurityReviewer.enableAIAnalysis": {
+        "vulnzap.enableAIAnalysis": {
           "type": "boolean",
           "default": true,
           "description": "Enable AI-powered security analysis (requires API keys)"
         },
-        "inlineSecurityReviewer.enableSearchEnhancement": {
-          "type": "boolean",
-          "default": true,
-          "description": "Enable Google search enhancement for vulnerability details"
-        },
-        "inlineSecurityReviewer.confidenceThreshold": {
+        "vulnzap.confidenceThreshold": {
           "type": "number",
           "default": 80,
           "minimum": 50,
           "maximum": 100,
           "description": "Minimum confidence threshold (50-100%) for reporting security issues. Higher values reduce false positives."
+        },
+        "vulnzap.enableContextAnalysis": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable context-aware analysis to reduce false positives by understanding code purpose and environment"
+        },
+        "vulnzap.enableTestFileFiltering": {
+          "type": "boolean",
+          "default": true,
+          "description": "Filter out security issues in test files that are typically acceptable in testing contexts"
+        },
+        "vulnzap.enableDataFlowAnalysis": {
+          "type": "boolean",
+          "default": true,
+          "description": "Analyze data flow to better understand if user input reaches vulnerable functions"
         }
       }
     }
   },
   "scripts": {
-    "vscode:prepublish": "npm run compile",
-    "compile": "tsc -p ./",
-    "watch": "tsc -watch -p ./"
+    "vscode:prepublish": "npm run package",
+    "package": "webpack --mode production --devtool hidden-source-map",
+    "watch": "webpack --mode development --watch",
+    "compile-tests": "tsc -p . --outDir out",
+    "watch-tests": "tsc -p . -w --outDir out"
   },
   "devDependencies": {
     "@types/node": "^16.18.126",
-    "@types/vscode": "^1.101.0",
+    "@types/vscode": "^1.74.0",
     "@vscode/test-electron": "^2.5.2",
-    "typescript": "^4.9.5"
+    "ts-loader": "^9.5.2",
+    "typescript": "^4.9.5",
+    "webpack": "^5.99.9",
+    "webpack-cli": "^6.0.1"
   },
   "dependencies": {
     "@google/genai": "^1.6.0",

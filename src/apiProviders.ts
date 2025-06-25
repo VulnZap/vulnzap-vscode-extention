@@ -18,6 +18,8 @@ export interface AISecurityResponse {
     }>;
     summary: string;
     overallRisk: 'low' | 'medium' | 'high' | 'critical';
+    isPartial?: boolean; // For streaming/progressive results
+    analysisTime?: number; // Track performance
 }
 
 export interface APIProvider {
@@ -31,9 +33,10 @@ export interface APIProvider {
 export class OpenAIProvider implements APIProvider {
     name = 'openai';
     displayName = 'OpenAI GPT';
+    private readonly fastModels = ['gpt-3.5-turbo', 'gpt-3.5-turbo-16k'];
 
     isConfigured(): boolean {
-        const apiKey = vscode.workspace.getConfiguration('inlineSecurityReviewer').get<string>('openaiApiKey');
+        const apiKey = vscode.workspace.getConfiguration('vulnzap').get<string>('openaiApiKey');
         return !!apiKey && apiKey.trim().length > 0;
     }
 
@@ -46,15 +49,22 @@ export class OpenAIProvider implements APIProvider {
     }
 
     async analyzeCode(code: string, language: string): Promise<AISecurityResponse> {
-        const config = vscode.workspace.getConfiguration('inlineSecurityReviewer');
+        const startTime = Date.now();
+        const config = vscode.workspace.getConfiguration('vulnzap');
         const apiKey = config.get<string>('openaiApiKey');
-        const model = config.get<string>('openaiModel', 'gpt-4');
+        let model = config.get<string>('openaiModel', 'gpt-4');
+
+        // Use faster model for initial quick scan
+        const enableFastScan = config.get<boolean>('enableFastScan', true);
+        if (enableFastScan && code.length > 1000) {
+            model = 'gpt-3.5-turbo'; // Much faster than GPT-4
+        }
 
         if (!apiKey) {
             throw new Error('OpenAI API key not configured');
         }
 
-        const prompt = this.buildAnalysisPrompt(code, language);
+        const prompt = this.buildOptimizedAnalysisPrompt(code, language);
 
         try {
             const response = await axios.post(
@@ -64,7 +74,7 @@ export class OpenAIProvider implements APIProvider {
                     messages: [
                         {
                             role: 'system',
-                            content: 'You are a security expert analyzing code for vulnerabilities. Only report actual concrete security issues, not possibilities or suggestions. Be very precise and avoid false positives. Respond only with valid JSON in the specified format.'
+                            content: 'You are a fast security scanner. Focus on critical vulnerabilities only. Respond with concise JSON.'
                         },
                         {
                             role: 'user',
@@ -72,14 +82,15 @@ export class OpenAIProvider implements APIProvider {
                         }
                     ],
                     temperature: 0.1,
-                    max_tokens: 4000
+                    max_tokens: 2000, // Reduced for faster response
+                    stream: false // Keep false for now, but prepare for streaming
                 },
                 {
                     headers: {
                         'Authorization': `Bearer ${apiKey}`,
                         'Content-Type': 'application/json'
                     },
-                    timeout: 30000
+                    timeout: 8000 // Reduced from 30000 to 8 seconds
                 }
             );
 
@@ -89,58 +100,43 @@ export class OpenAIProvider implements APIProvider {
             }
 
             const parsed = this.parseAIResponse(aiText);
-            return this.filterLowConfidenceIssues(parsed);
+            const result = this.filterLowConfidenceIssues(parsed);
+            result.analysisTime = Date.now() - startTime;
+            return result;
         } catch (error: any) {
             if (error.response?.status === 401) {
                 throw new Error('Invalid OpenAI API key');
             } else if (error.response?.status === 429) {
                 throw new Error('OpenAI API rate limit exceeded');
+            } else if (error.code === 'ECONNABORTED') {
+                throw new Error('Analysis timeout - try enabling fast scan mode');
             }
             throw new Error(`OpenAI API error: ${error.message}`);
         }
     }
 
-    private buildAnalysisPrompt(code: string, language: string): string {
-        return `Analyze this ${language} code for ACTUAL security vulnerabilities. Only report issues where you can identify concrete evidence of a security problem in the code itself.
+    private buildOptimizedAnalysisPrompt(code: string, language: string): string {
+        // Optimize prompt for speed - less verbose, focus on critical issues
+        const maxLines = 100; // Limit analysis to first 100 lines for speed
+        const lines = code.split('\n').slice(0, maxLines);
+        const limitedCode = lines.join('\n');
+        
+        return `Quick security scan for ${language} code. Find CRITICAL vulnerabilities only:
 
-CRITICAL GUIDELINES:
-- Only flag ACTUAL vulnerabilities you can see in the code
-- Do NOT flag possibilities, suggestions, or general security advice
-- Do NOT flag normal logging, debugging, or test code as suspicious
-- Do NOT assume file paths, variable names, or strings indicate vulnerabilities
-- Only report if confidence is 85% or higher
-- Focus on dangerous functions, patterns, and actual security flaws
-- Ignore benign console.log, file paths, or debugging statements
-- Ignore test files unless they contain actual vulnerabilities
-
-Return a JSON response with this exact structure:
+FOCUS ON: SQL injection, XSS, hardcoded secrets, eval(), unsafe file ops
+IGNORE: Warnings, suggestions, minor issues
+RESPONSE: Concise JSON only
 
 {
-  "issues": [
-    {
-      "line": 1,
-      "column": 0,
-      "endLine": 1,
-      "endColumn": 10,
-      "message": "Specific description of the actual vulnerability found",
-      "severity": "error|warning|info",
-      "code": "VULN_CODE",
-      "suggestion": "How to fix this specific issue",
-      "confidence": 90,
-      "cve": ["CVE-2023-1234"],
-      "searchQuery": "specific vulnerability type"
-    }
-  ],
-  "summary": "Brief summary of actual security issues found (or 'No security vulnerabilities detected')",
-  "overallRisk": "low|medium|high|critical"
+  "issues": [{"line": 1, "column": 0, "endLine": 1, "endColumn": 10, "message": "Critical issue", "severity": "error", "code": "CRIT_VULN", "confidence": 95}],
+  "summary": "Found X critical issues",
+  "overallRisk": "high"
 }
 
-Code to analyze:
+Code (first ${maxLines} lines):
 \`\`\`${language}
-${code}
-\`\`\`
-
-Look for ACTUAL instances of: SQL injection, XSS vulnerabilities, hardcoded API keys/passwords, unsafe eval(), insecure file operations, authentication bypasses, unsafe deserialization, and other concrete security flaws.`;
+${limitedCode}
+\`\`\``;
     }
 
     private parseAIResponse(aiText: string): AISecurityResponse {
@@ -192,7 +188,7 @@ export class GeminiProvider implements APIProvider {
     }
 
     private async initializeAI() {
-        const apiKey = vscode.workspace.getConfiguration('inlineSecurityReviewer').get<string>('geminiApiKey');
+        const apiKey = vscode.workspace.getConfiguration('vulnzap').get<string>('geminiApiKey');
         if (apiKey) {
             this.genAI = new GoogleGenAI({
                 apiKey: apiKey,
@@ -201,7 +197,7 @@ export class GeminiProvider implements APIProvider {
     }
 
     isConfigured(): boolean {
-        const apiKey = vscode.workspace.getConfiguration('inlineSecurityReviewer').get<string>('geminiApiKey');
+        const apiKey = vscode.workspace.getConfiguration('vulnzap').get<string>('geminiApiKey');
         return !!apiKey && apiKey.trim().length > 0;
     }
 
@@ -214,6 +210,7 @@ export class GeminiProvider implements APIProvider {
     }
 
     async analyzeCode(code: string, language: string): Promise<AISecurityResponse> {
+        const startTime = Date.now();
         if (!this.genAI) {
             await this.initializeAI();
             if (!this.genAI) {
@@ -221,22 +218,20 @@ export class GeminiProvider implements APIProvider {
             }
         }
 
-        const prompt = this.buildAnalysisPrompt(code, language);
+        const prompt = this.buildOptimizedAnalysisPrompt(code, language);
 
         try {
-            // Use the correct API structure for @google/genai
+            // Use fastest Gemini model
             const result = await this.genAI.models.generateContent({
-                model: 'gemini-2.0-flash-exp',
+                model: 'gemini-1.5-flash', // Much faster than gemini-pro
                 contents: [{
                     role: 'user',
                     parts: [{ text: prompt }]
                 }],
                 config: {
-                    tools: [
-                        {
-                            googleSearch: {}
-                        }
-                    ]
+                    temperature: 0.1,
+                    maxOutputTokens: 1500, // Reduced for speed
+                    // Remove search tools for faster response
                 }
             });
 
@@ -247,7 +242,9 @@ export class GeminiProvider implements APIProvider {
             }
 
             const parsed = this.parseAIResponse(aiText);
-            return this.filterLowConfidenceIssues(parsed);
+            const result_final = this.filterLowConfidenceIssues(parsed);
+            result_final.analysisTime = Date.now() - startTime;
+            return result_final;
         } catch (error: any) {
             if (error.message?.includes('API_KEY_INVALID') || error.message?.includes('invalid api key')) {
                 throw new Error('Invalid Gemini API key');
@@ -256,47 +253,28 @@ export class GeminiProvider implements APIProvider {
         }
     }
 
-    private buildAnalysisPrompt(code: string, language: string): string {
-        return `Analyze this ${language} code for ACTUAL security vulnerabilities. Only report issues where you can identify concrete evidence of a security problem in the code itself.
+    private buildOptimizedAnalysisPrompt(code: string, language: string): string {
+        // Same optimization as OpenAI
+        const maxLines = 100;
+        const lines = code.split('\n').slice(0, maxLines);
+        const limitedCode = lines.join('\n');
+        
+        return `Fast security scan - ${language} code. Critical vulnerabilities only:
 
-CRITICAL GUIDELINES:
-- Only flag ACTUAL vulnerabilities you can see in the code
-- Do NOT flag possibilities, suggestions, or general security advice
-- Do NOT flag normal logging, debugging, or test code as suspicious
-- Do NOT assume file paths, variable names, or strings indicate vulnerabilities
-- Only report if confidence is 85% or higher
-- Focus on dangerous functions, patterns, and actual security flaws
-- Ignore benign console.log, file paths, or debugging statements
-- Ignore test files unless they contain actual vulnerabilities
-
-Return a JSON response with this exact structure:
+Find: SQL injection, XSS, secrets, eval(), unsafe file ops
+Skip: Minor issues, suggestions
+Format: Minimal JSON
 
 {
-  "issues": [
-    {
-      "line": 1,
-      "column": 0,
-      "endLine": 1,
-      "endColumn": 10,
-      "message": "Specific description of the actual vulnerability found",
-      "severity": "error|warning|info",
-      "code": "VULN_CODE",
-      "suggestion": "How to fix this specific issue",
-      "confidence": 90,
-      "cve": ["CVE-2023-1234"],
-      "searchQuery": "specific vulnerability type"
-    }
-  ],
-  "summary": "Brief summary of actual security issues found (or 'No security vulnerabilities detected')",
-  "overallRisk": "low|medium|high|critical"
+  "issues": [{"line": 1, "column": 0, "endLine": 1, "endColumn": 10, "message": "Issue", "severity": "error", "code": "VULN", "confidence": 90}],
+  "summary": "X issues found",
+  "overallRisk": "medium"
 }
 
-Code to analyze:
+Code:
 \`\`\`${language}
-${code}
-\`\`\`
-
-Look for ACTUAL instances of: SQL injection, XSS vulnerabilities, hardcoded API keys/passwords, unsafe eval(), insecure file operations, authentication bypasses, unsafe deserialization, and other concrete security flaws.`;
+${limitedCode}
+\`\`\``;
     }
 
     private parseAIResponse(aiText: string): AISecurityResponse {
@@ -343,7 +321,7 @@ export class OpenRouterProvider implements APIProvider {
     displayName = 'OpenRouter';
 
     isConfigured(): boolean {
-        const apiKey = vscode.workspace.getConfiguration('inlineSecurityReviewer').get<string>('openrouterApiKey');
+        const apiKey = vscode.workspace.getConfiguration('vulnzap').get<string>('openrouterApiKey');
         return !!apiKey && apiKey.trim().length > 0;
     }
 
@@ -356,7 +334,7 @@ export class OpenRouterProvider implements APIProvider {
     }
 
     async analyzeCode(code: string, language: string): Promise<AISecurityResponse> {
-        const config = vscode.workspace.getConfiguration('inlineSecurityReviewer');
+        const config = vscode.workspace.getConfiguration('vulnzap');
         const apiKey = config.get<string>('openrouterApiKey');
         const model = config.get<string>('openrouterModel', 'anthropic/claude-3-haiku');
 
@@ -391,7 +369,7 @@ export class OpenRouterProvider implements APIProvider {
                         'HTTP-Referer': 'https://github.com/vulnzap/vscode-extension',
                         'X-Title': 'VulnZap VS Code Extension'
                     },
-                    timeout: 30000
+                    timeout: 10000 // Reduced from 30000 to 10 seconds
                 }
             );
 
@@ -412,7 +390,29 @@ export class OpenRouterProvider implements APIProvider {
     }
 
     private buildAnalysisPrompt(code: string, language: string): string {
-        return `Analyze this ${language} code for security vulnerabilities. Return a JSON response with this exact structure:
+        // Add line numbers to the code for accurate reference
+        const numberedLines = code.split('\n').map((line, index) => `${index + 1}: ${line}`);
+        const numberedCode = numberedLines.join('\n');
+        
+        return `Analyze this ${language} code for ACTUAL security vulnerabilities. Only report issues where you can identify concrete evidence of a security problem in the code itself.
+
+CRITICAL GUIDELINES:
+- Only flag ACTUAL vulnerabilities you can see in the code
+- Do NOT flag possibilities, suggestions, or general security advice
+- Do NOT flag normal logging, debugging, or test code as suspicious
+- Do NOT assume file paths, variable names, or strings indicate vulnerabilities
+- Only report if confidence is 85% or higher
+- Focus on dangerous functions, patterns, and actual security flaws
+- Ignore benign console.log, file paths, or debugging statements
+- Ignore test files unless they contain actual vulnerabilities
+
+LINE NUMBER INSTRUCTIONS:
+- Use EXACT line numbers from the numbered code below
+- Line numbers are 1-based (first line is line 1)
+- Point to the EXACT line where the vulnerability occurs
+- For multi-line vulnerabilities, use the line where it starts
+
+Return a JSON response with this exact structure:
 
 {
   "issues": [
@@ -421,25 +421,25 @@ export class OpenRouterProvider implements APIProvider {
       "column": 0,
       "endLine": 1,
       "endColumn": 10,
-      "message": "Description of the security issue",
+      "message": "Specific description of the actual vulnerability found",
       "severity": "error|warning|info",
       "code": "VULN_CODE",
-      "suggestion": "How to fix this",
-      "confidence": 85,
+      "suggestion": "How to fix this specific issue",
+      "confidence": 90,
       "cve": ["CVE-2023-1234"],
-      "searchQuery": "sql injection prevention"
+      "searchQuery": "specific vulnerability type"
     }
   ],
-  "summary": "Overall security assessment",
+  "summary": "Brief summary of actual security issues found (or 'No security vulnerabilities detected')",
   "overallRisk": "low|medium|high|critical"
 }
 
-Code to analyze:
+Code to analyze (with line numbers):
 \`\`\`${language}
-${code}
+${numberedCode}
 \`\`\`
 
-Focus on: SQL injection, XSS, authentication bypasses, insecure dependencies, hardcoded secrets, unsafe deserialization, path traversal, and other OWASP Top 10 vulnerabilities.`;
+Look for ACTUAL instances of: SQL injection, XSS vulnerabilities, hardcoded API keys/passwords, unsafe eval(), insecure file operations, authentication bypasses, unsafe deserialization, and other concrete security flaws.`;
     }
 
     private parseAIResponse(aiText: string): AISecurityResponse {
@@ -473,7 +473,7 @@ export class VulnZapProvider implements APIProvider {
     displayName = 'VulnZap Custom API';
 
     isConfigured(): boolean {
-        const config = vscode.workspace.getConfiguration('inlineSecurityReviewer');
+        const config = vscode.workspace.getConfiguration('vulnzap');
         const apiKey = config.get<string>('vulnzapApiKey');
         const baseUrl = config.get<string>('vulnzapApiUrl');
         return !!apiKey && apiKey.trim().length > 0 && !!baseUrl && baseUrl.trim().length > 0;
@@ -481,7 +481,7 @@ export class VulnZapProvider implements APIProvider {
 
     getConfigurationErrors(): string[] {
         const errors: string[] = [];
-        const config = vscode.workspace.getConfiguration('inlineSecurityReviewer');
+        const config = vscode.workspace.getConfiguration('vulnzap');
         const apiKey = config.get<string>('vulnzapApiKey');
         const baseUrl = config.get<string>('vulnzapApiUrl');
         
@@ -495,7 +495,7 @@ export class VulnZapProvider implements APIProvider {
     }
 
     async analyzeCode(code: string, language: string): Promise<AISecurityResponse> {
-        const config = vscode.workspace.getConfiguration('inlineSecurityReviewer');
+        const config = vscode.workspace.getConfiguration('vulnzap');
         const apiKey = config.get<string>('vulnzapApiKey');
         const baseUrl = config.get<string>('vulnzapApiUrl', 'https://api.vulnzap.com');
 
@@ -525,7 +525,7 @@ export class VulnZapProvider implements APIProvider {
                         'Content-Type': 'application/json',
                         'User-Agent': 'VulnZap-VSCode-Extension/1.0.0'
                     },
-                    timeout: 45000
+                    timeout: 12000
                 }
             );
 
@@ -602,7 +602,7 @@ export class APIProviderManager {
     }
 
     updateCurrentProvider() {
-        const config = vscode.workspace.getConfiguration('inlineSecurityReviewer');
+        const config = vscode.workspace.getConfiguration('vulnzap');
         const selectedProvider = config.get<string>('apiProvider', 'gemini');
         
         this.currentProvider = this.providers.get(selectedProvider) || null;
