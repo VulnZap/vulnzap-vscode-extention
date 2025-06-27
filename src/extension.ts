@@ -3,12 +3,18 @@ import { SecurityAnalyzer } from './securityAnalyzer';
 import { DiagnosticProvider } from './diagnosticProvider';
 import { APIProviderManager } from './apiProviders';
 import { SecurityViewProvider } from './securityViewProvider';
+import { VectorIndexer } from './vectorIndexer';
 
 export function activate(context: vscode.ExtensionContext) {
     try {
+        // Initialize vector indexer first
+        const vectorIndexer = new VectorIndexer(context);
         const securityAnalyzer = new SecurityAnalyzer();
         const diagnosticProvider = new DiagnosticProvider(context);
         const securityViewProvider = new SecurityViewProvider(context);
+        
+        // Link the vector indexer with security analyzer
+        securityAnalyzer.setVectorIndexer(vectorIndexer);
         
         // Register the tree data provider
         vscode.window.registerTreeDataProvider('vulnzap.securityView', securityViewProvider);
@@ -260,6 +266,104 @@ export function activate(context: vscode.ExtensionContext) {
             });
         });
 
+        // Vector Indexing Commands
+        const buildIndexCommand = vscode.commands.registerCommand('vulnzap.buildIndex', async () => {
+            console.log('VulnZap: Build index command called');
+            
+            try {
+                await vectorIndexer.initializeIndex();
+            } catch (error) {
+                console.error('Error building index:', error);
+                vscode.window.showErrorMessage('Error building security index: ' + (error as Error).message);
+            }
+        });
+
+        const indexStatsCommand = vscode.commands.registerCommand('vulnzap.indexStats', () => {
+            console.log('VulnZap: Index stats command called');
+            
+            const stats = vectorIndexer.getIndexStats();
+            
+            vscode.window.showInformationMessage(
+                `Index Stats:\n` +
+                `• Total Chunks: ${stats.totalChunks}\n` +
+                `• Total Files: ${stats.totalFiles}\n` +
+                `• Index Size: ${stats.indexSize}\n` +
+                `• Last Full Index: ${stats.lastFullIndex ? stats.lastFullIndex.toLocaleString() : 'Never'}`
+            );
+        });
+
+        const clearIndexCommand = vscode.commands.registerCommand('vulnzap.clearIndex', async () => {
+            console.log('VulnZap: Clear index command called');
+            
+            const choice = await vscode.window.showWarningMessage(
+                'Are you sure you want to clear the security index? This will remove all indexed code chunks.',
+                'Clear Index',
+                'Cancel'
+            );
+
+            if (choice === 'Clear Index') {
+                try {
+                    await vectorIndexer.clearIndex();
+                    vscode.window.showInformationMessage('Security index cleared successfully');
+                } catch (error) {
+                    console.error('Error clearing index:', error);
+                    vscode.window.showErrorMessage('Error clearing index: ' + (error as Error).message);
+                }
+            }
+        });
+
+        const findSimilarCodeCommand = vscode.commands.registerCommand('vulnzap.findSimilarCode', async () => {
+            console.log('VulnZap: Find similar code command called');
+            
+            const activeEditor = vscode.window.activeTextEditor;
+            if (!activeEditor) {
+                vscode.window.showWarningMessage('No active editor to analyze');
+                return;
+            }
+
+            const selection = activeEditor.selection;
+            const selectedText = activeEditor.document.getText(selection);
+            
+            if (!selectedText.trim()) {
+                vscode.window.showWarningMessage('Please select some code to find similar patterns');
+                return;
+            }
+
+            try {
+                const results = await vectorIndexer.findSimilarCode(selectedText, {
+                    maxResults: 10,
+                    similarityThreshold: 0.6
+                });
+
+                if (results.length === 0) {
+                    vscode.window.showInformationMessage('No similar code patterns found');
+                    return;
+                }
+
+                // Create a new document to show results
+                const resultContent = results.map((result, index) => {
+                    return `## Result ${index + 1} (Similarity: ${(result.similarity * 100).toFixed(1)}%)\n` +
+                           `**File:** ${result.chunk.filePath}\n` +
+                           `**Lines:** ${result.chunk.startLine}-${result.chunk.endLine}\n` +
+                           `**Security Relevance:** ${result.chunk.securityRelevance}\n` +
+                           `**Type:** ${result.chunk.semanticType}\n\n` +
+                           '```\n' +
+                           result.chunk.content.substring(0, 500) + (result.chunk.content.length > 500 ? '...' : '') +
+                           '\n```\n\n';
+                }).join('---\n\n');
+
+                const doc = await vscode.workspace.openTextDocument({
+                    content: `# Similar Code Patterns\n\n${resultContent}`,
+                    language: 'markdown'
+                });
+
+                await vscode.window.showTextDocument(doc);
+            } catch (error) {
+                console.error('Error finding similar code:', error);
+                vscode.window.showErrorMessage('Error finding similar code: ' + (error as Error).message);
+            }
+        });
+
         console.log('VulnZap: All commands registered successfully');
         
         // Configuration change listener
@@ -337,6 +441,10 @@ export function activate(context: vscode.ExtensionContext) {
             refreshSecurityViewCommand,
             clearAllIssuesCommand,
             scanWorkspaceCommand,
+            buildIndexCommand,
+            indexStatsCommand,
+            clearIndexCommand,
+            findSimilarCodeCommand,
             configChangeListener,
             diagnosticProvider
         );

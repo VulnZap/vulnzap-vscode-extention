@@ -2,7 +2,7 @@
   "name": "vulnzap",
   "displayName": "VulnZap",
   "description": "AI-powered real-time security analysis for JavaScript, TypeScript, Python, and Java code. Detects vulnerabilities like XSS, SQL injection, and weak cryptography with high accuracy.",
-  "version": "0.1.8",
+  "version": "0.1.9",
   "publisher": "vulnzap",
   "icon": "icon.png",
   "repository": {
@@ -84,6 +84,30 @@
         "command": "vulnzap.scanWorkspace",
         "title": "Scan Entire Workspace",
         "icon": "$(search)"
+      },
+      {
+        "command": "vulnzap.buildIndex",
+        "title": "Build Security Index",
+        "category": "Security",
+        "icon": "$(database)"
+      },
+      {
+        "command": "vulnzap.indexStats",
+        "title": "View Index Statistics",
+        "category": "Security",
+        "icon": "$(info)"
+      },
+      {
+        "command": "vulnzap.clearIndex",
+        "title": "Clear Security Index",
+        "category": "Security",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "vulnzap.findSimilarCode",
+        "title": "Find Similar Code Patterns",
+        "category": "Security",
+        "icon": "$(search)"
       }
     ],
     "viewsContainers": {
@@ -141,6 +165,22 @@
         {
           "command": "vulnzap.scanWorkspace",
           "when": "true"
+        },
+        {
+          "command": "vulnzap.buildIndex",
+          "when": "true"
+        },
+        {
+          "command": "vulnzap.indexStats",
+          "when": "true"
+        },
+        {
+          "command": "vulnzap.clearIndex",
+          "when": "true"
+        },
+        {
+          "command": "vulnzap.findSimilarCode",
+          "when": "editorHasSelection"
         }
       ],
       "view/title": [
@@ -158,6 +198,16 @@
           "command": "vulnzap.clearAllIssues",
           "when": "view == vulnzap.securityView",
           "group": "navigation"
+        },
+        {
+          "command": "vulnzap.buildIndex",
+          "when": "view == vulnzap.securityView",
+          "group": "index"
+        },
+        {
+          "command": "vulnzap.indexStats",
+          "when": "view == vulnzap.securityView",
+          "group": "index"
         }
       ],
       "view/item/context": [
@@ -288,6 +338,30 @@
           "type": "boolean",
           "default": true,
           "description": "Analyze data flow to better understand if user input reaches vulnerable functions"
+        },
+        "vulnzap.enableVectorIndexing": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable vector indexing for semantic code analysis and similarity detection"
+        },
+        "vulnzap.autoIndexOnSave": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically update the vector index when files are saved"
+        },
+        "vulnzap.vectorSimilarityThreshold": {
+          "type": "number",
+          "default": 0.7,
+          "minimum": 0.5,
+          "maximum": 1.0,
+          "description": "Similarity threshold (0.5-1.0) for vector-based code pattern matching"
+        },
+        "vulnzap.indexChunkSize": {
+          "type": "number",
+          "default": 500,
+          "minimum": 100,
+          "maximum": 2000,
+          "description": "Number of lines per code chunk for vector indexing"
         }
       }
     }
@@ -310,6 +384,7 @@
   },
   "dependencies": {
     "@google/genai": "^1.6.0",
-    "axios": "^1.6.0"
+    "axios": "^1.6.0",
+    "typescript": "^4.9.5"
   }
 }

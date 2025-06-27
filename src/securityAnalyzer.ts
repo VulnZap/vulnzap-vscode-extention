@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import axios from 'axios';
 import { APIProviderManager, AISecurityResponse } from './apiProviders';
 import { ContextAnalyzer, CodeContext, SecurityContext } from './contextAnalyzer';
+import { VectorIndexer, CodeChunk, SearchResult } from './vectorIndexer';
 
 export interface SecurityIssue {
     line: number;
@@ -15,19 +16,23 @@ export interface SecurityIssue {
     confidence?: number;
     cve?: string[];
     searchResults?: string[];
+    relatedCode?: CodeChunk[];
+    similarVulnerabilities?: CodeChunk[];
 }
 
 export class SecurityAnalyzer {
     private apiProviderManager: APIProviderManager;
     private contextAnalyzer: ContextAnalyzer;
+    private vectorIndexer: VectorIndexer | null = null;
     private cache = new Map<string, { result: AISecurityResponse; timestamp: number }>();
     private readonly CACHE_DURATION = 10 * 60 * 1000; // 10 minutes for better performance
     private readonly MAX_CHUNK_SIZE = 4000; // Increased from 10000, but we'll chunk it
     private readonly MAX_FILE_SIZE = 50000; // Increased limit
 
-    constructor() {
+    constructor(vectorIndexer?: VectorIndexer) {
         this.apiProviderManager = new APIProviderManager();
         this.contextAnalyzer = new ContextAnalyzer();
+        this.vectorIndexer = vectorIndexer || null;
         
         // Listen for configuration changes to update the current provider
         vscode.workspace.onDidChangeConfiguration((event) => {
@@ -37,6 +42,9 @@ export class SecurityAnalyzer {
         });
     }
 
+    setVectorIndexer(vectorIndexer: VectorIndexer): void {
+        this.vectorIndexer = vectorIndexer;
+    }
 
     async analyzeDocument(document: vscode.TextDocument): Promise<SecurityIssue[]> {
         const aiEnabled = vscode.workspace.getConfiguration('vulnzap').get('enableAIAnalysis', true);
@@ -86,7 +94,8 @@ export class SecurityAnalyzer {
             if (cached && Date.now() - cached.timestamp < this.CACHE_DURATION) {
                 console.log('Using cached analysis result');
                 const cachedIssues = this.convertAIResponseToSecurityIssues(cached.result);
-                return this.filterIssuesWithContext(cachedIssues, document, codeContext);
+                const enhancedIssues = await this.enhanceIssuesWithVectorContext(cachedIssues, document, codeContext);
+                return this.filterIssuesWithContext(enhancedIssues, document, codeContext);
             }
 
             // For files larger than chunk size, analyze in chunks
@@ -95,8 +104,8 @@ export class SecurityAnalyzer {
                 console.log('File large, analyzing in chunks...');
                 allIssues = await this.analyzeInChunks(text, languageId);
             } else {
-                // Enhance the AI prompt with context information
-                const contextEnhancedCode = this.buildContextEnhancedPrompt(text, languageId, codeContext);
+                // Enhance the AI prompt with context information AND vector context
+                const contextEnhancedCode = await this.buildVectorEnhancedPrompt(text, languageId, codeContext, document);
                 const aiResponse = await this.apiProviderManager.analyzeCode(contextEnhancedCode, languageId);
                 
                 // Cache the result
@@ -108,8 +117,11 @@ export class SecurityAnalyzer {
             // Refine issue positioning for better accuracy
             const refinedIssues = this.refineIssueLocations(allIssues, document);
             
+            // Enhance issues with vector context before filtering
+            const vectorEnhancedIssues = await this.enhanceIssuesWithVectorContext(refinedIssues, document, codeContext);
+            
             // Apply context-aware filtering to reduce false positives
-            const contextFilteredIssues = this.filterIssuesWithContext(refinedIssues, document, codeContext);
+            const contextFilteredIssues = this.filterIssuesWithContext(vectorEnhancedIssues, document, codeContext);
             
             console.log(`Analysis complete: found ${contextFilteredIssues.length} issues (filtered from ${refinedIssues.length} total)`);
             return contextFilteredIssues;
@@ -602,5 +614,160 @@ export class SecurityAnalyzer {
         if (securityContext.usesSecurityLibrary) descriptions.push('secured');
         
         return descriptions.join(', ') || 'unknown';
+    }
+
+    /**
+     * Enhance security issues with vector context from similar code patterns
+     */
+    private async enhanceIssuesWithVectorContext(
+        issues: SecurityIssue[], 
+        document: vscode.TextDocument, 
+        codeContext: CodeContext
+    ): Promise<SecurityIssue[]> {
+        if (!this.vectorIndexer) {
+            return issues;
+        }
+
+        const enhancedIssues: SecurityIssue[] = [];
+
+        for (const issue of issues) {
+            try {
+                // Get the problematic code snippet
+                const line = document.lineAt(issue.line);
+                const codeSnippet = this.getExpandedCodeSnippet(document, issue.line, 3);
+
+                // Find vector context for this issue
+                const vectorContext = await this.vectorIndexer.getSecurityAnalysisContext(
+                    codeSnippet,
+                    document.fileName,
+                    issue.line
+                );
+
+                // Enhance the issue with vector context
+                const enhancedIssue: SecurityIssue = {
+                    ...issue,
+                    relatedCode: vectorContext.relatedSecurityPatterns,
+                    similarVulnerabilities: vectorContext.similarVulnerabilities
+                };
+
+                // Enhance suggestion with similar code patterns
+                if (vectorContext.similarVulnerabilities.length > 0) {
+                    const suggestions = this.generateContextualSuggestions(issue, vectorContext.similarVulnerabilities);
+                    enhancedIssue.suggestion = enhancedIssue.suggestion 
+                        ? `${enhancedIssue.suggestion}\n\nRelated patterns found: ${suggestions}`
+                        : `Related patterns found: ${suggestions}`;
+                }
+
+                // Adjust confidence based on similar vulnerability patterns
+                if (vectorContext.similarVulnerabilities.length > 2) {
+                    enhancedIssue.confidence = Math.min((enhancedIssue.confidence || 0.5) + 0.2, 1.0);
+                }
+
+                enhancedIssues.push(enhancedIssue);
+            } catch (error) {
+                console.error(`Failed to enhance issue with vector context:`, error);
+                enhancedIssues.push(issue); // Fall back to original issue
+            }
+        }
+
+        return enhancedIssues;
+    }
+
+    /**
+     * Build a vector-enhanced prompt that includes context from similar code patterns
+     */
+    private async buildVectorEnhancedPrompt(
+        code: string, 
+        language: string, 
+        codeContext: CodeContext,
+        document: vscode.TextDocument
+    ): Promise<string> {
+        let enhancedPrompt = this.buildContextEnhancedPrompt(code, language, codeContext);
+
+        if (!this.vectorIndexer) {
+            return enhancedPrompt;
+        }
+
+        try {
+            // Find similar security-relevant code patterns
+            const similarPatterns = await this.vectorIndexer.findSimilarCode(code, {
+                maxResults: 3,
+                securityRelevanceOnly: true,
+                similarityThreshold: 0.6
+            });
+
+            if (similarPatterns.length > 0) {
+                enhancedPrompt += '\n\n## Similar Security Patterns Found:\n';
+                enhancedPrompt += 'The following similar code patterns were found in the codebase that may help inform your analysis:\n\n';
+
+                for (const pattern of similarPatterns) {
+                    enhancedPrompt += `### Pattern from ${pattern.chunk.filePath} (similarity: ${(pattern.similarity * 100).toFixed(1)}%):\n`;
+                    enhancedPrompt += `Security relevance: ${pattern.chunk.securityRelevance}\n`;
+                    enhancedPrompt += '```\n';
+                    enhancedPrompt += pattern.chunk.content.substring(0, 500) + (pattern.chunk.content.length > 500 ? '...' : '');
+                    enhancedPrompt += '\n```\n\n';
+                }
+
+                enhancedPrompt += 'Please consider these patterns when analyzing the target code for potential security issues.\n';
+            }
+
+            // Add framework-specific context if available
+            if (codeContext.framework) {
+                const frameworkPatterns = await this.vectorIndexer.findSimilarCode(`${codeContext.framework} security`, {
+                    maxResults: 2,
+                    securityRelevanceOnly: true,
+                    similarityThreshold: 0.5
+                });
+
+                if (frameworkPatterns.length > 0) {
+                    enhancedPrompt += '\n## Framework-Specific Security Patterns:\n';
+                    for (const pattern of frameworkPatterns) {
+                        enhancedPrompt += `- Pattern: ${pattern.chunk.content.substring(0, 200)}...\n`;
+                    }
+                }
+            }
+
+        } catch (error) {
+            console.error('Failed to enhance prompt with vector context:', error);
+        }
+
+        return enhancedPrompt;
+    }
+
+    /**
+     * Generate contextual suggestions based on similar vulnerability patterns
+     */
+    private generateContextualSuggestions(issue: SecurityIssue, similarVulnerabilities: CodeChunk[]): string {
+        const suggestions: string[] = [];
+
+        for (const vuln of similarVulnerabilities.slice(0, 3)) {
+            // Extract potential fixes from similar patterns
+            if (vuln.content.includes('sanitize') || vuln.content.includes('escape')) {
+                suggestions.push(`Consider sanitization (similar pattern in ${vuln.filePath})`);
+            }
+            if (vuln.content.includes('validate') || vuln.content.includes('check')) {
+                suggestions.push(`Add input validation (pattern found in ${vuln.filePath})`);
+            }
+            if (vuln.content.includes('jwt') || vuln.content.includes('token')) {
+                suggestions.push(`Consider token-based authentication (pattern in ${vuln.filePath})`);
+            }
+        }
+
+        return suggestions.length > 0 ? suggestions.join('; ') : 'Review similar patterns in related files';
+    }
+
+    /**
+     * Get expanded code snippet around a specific line
+     */
+    private getExpandedCodeSnippet(document: vscode.TextDocument, centerLine: number, radius: number): string {
+        const startLine = Math.max(0, centerLine - radius);
+        const endLine = Math.min(document.lineCount - 1, centerLine + radius);
+        
+        let snippet = '';
+        for (let i = startLine; i <= endLine; i++) {
+            snippet += document.lineAt(i).text + '\n';
+        }
+        
+        return snippet;
     }
 }
