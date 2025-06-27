@@ -86,6 +86,11 @@
         "icon": "$(search)"
       },
       {
+        "command": "vulnzap.login",
+        "title": "Log In to VulnZap",
+        "category": "Security"
+      },
+      {
         "command": "vulnzap.buildIndex",
         "title": "Build Security Index",
         "category": "Security",
@@ -370,6 +375,7 @@
     "vscode:prepublish": "npm run package",
     "package": "webpack --mode production --devtool hidden-source-map",
     "watch": "webpack --mode development --watch",
+    "compile": "webpack --mode development",
     "compile-tests": "tsc -p . --outDir out",
     "watch-tests": "tsc -p . -w --outDir out"
   },
@@ -386,5 +392,9 @@
     "@google/genai": "^1.6.0",
     "axios": "^1.6.0",
     "typescript": "^4.9.5"
+  },
+  "optionalDependencies": {
+    "bufferutil": "^4.0.9",
+    "utf-8-validate": "^6.0.5"
   }
 }
