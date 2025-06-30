@@ -246,6 +246,9 @@ export class SecurityAnalyzer {
     }
 
     private convertAIResponseToSecurityIssues(aiResponse: AISecurityResponse): SecurityIssue[] {
+        console.log('SecurityAnalyzer: Converting AI response to security issues');
+        console.log('AI Response:', JSON.stringify(aiResponse, null, 2));
+
         const issues = aiResponse.issues.map(issue => ({
             line: issue.line,
             column: issue.column,
@@ -260,8 +263,13 @@ export class SecurityAnalyzer {
             searchResults: (issue as any).searchResults
         }));
 
+        console.log('Converted issues before filtering:', JSON.stringify(issues, null, 2));
+
         // Filter out low-confidence issues and false positives
-        return this.filterHighConfidenceIssues(issues);
+        const filteredIssues = this.filterHighConfidenceIssues(issues);
+        console.log('Final filtered issues:', JSON.stringify(filteredIssues, null, 2));
+        
+        return filteredIssues;
     }
 
     /**

@@ -214,8 +214,15 @@ ${processedCode}
         throw new Error("Invalid response format: missing issues array");
       }
 
+      // Don't convert line numbers - keep original values
+      const issues = parsed.issues.map((issue: any) => ({
+        ...issue,
+        line: issue.line, // Keep original line number
+        endLine: issue.endLine, // Keep original endLine number
+      }));
+
       return {
-        issues: parsed.issues || [],
+        issues,
         summary: parsed.summary || "Security analysis completed",
         overallRisk: parsed.overallRisk || "low",
       };
@@ -376,6 +383,17 @@ export class VulnZapProvider implements APIProvider {
     apiUrl: string, 
     fastScan: boolean
   ): Promise<AISecurityResponse> {
+    console.log('=== AST ANALYSIS DEBUG ===');
+    console.log('Code being sent to API:');
+    console.log('Code length:', code.length);
+    console.log('Code with line numbers:');
+    const lines = code.split('\n');
+    lines.forEach((line, index) => {
+      console.log(`Line ${index + 1} (VS Code line ${index}): "${line}"`);
+    });
+    console.log('Raw code (escaped):', JSON.stringify(code));
+    console.log('========================');
+
     // Create AST analyzer for the language
     const astAnalyzer = ASTAnalyzerFactory.createAnalyzer(language);
     
@@ -405,7 +423,7 @@ export class VulnZapProvider implements APIProvider {
       },
       {
         headers: {
-          "Authorization": `Bearer ${apiKey}`,
+          "x-api-key": `${apiKey}`,
           "Content-Type": "application/json",
           "User-Agent": "VulnZap-VSCode-Extension-AST"
         },
@@ -463,7 +481,7 @@ export class VulnZapProvider implements APIProvider {
       },
       {
         headers: {
-          "Authorization": `Bearer ${apiKey}`,
+          "x-api-key": `${apiKey}`,
           "Content-Type": "application/json",
           "User-Agent": "VulnZap-VSCode-Extension"
         },
@@ -556,24 +574,48 @@ ${code}
     astResult: ASTGuidedAnalysisResponse
   ): AISecurityResponse {
     try {
+      console.log('Raw AST response data:', JSON.stringify(data, null, 2));
+      
       if (typeof data === 'string') {
         data = JSON.parse(data);
       }
 
-      const issues = Array.isArray(data.issues) ? data.issues.map((issue: any) => ({
-        ...issue,
-        precise: true,
-        astGuided: true,
-        confidence: issue.confidence || 90
-      })) : [];
+      // Handle wrapped response format with success/data structure
+      let responseData = data;
+      if (data.success && data.data) {
+        responseData = data.data;
+        console.log('Extracted response data from wrapped format:', JSON.stringify(responseData, null, 2));
+      }
 
-      return {
+      const issues = Array.isArray(responseData.issues) ? responseData.issues.map((issue: any) => {
+        console.log(`Original issue: line ${issue.line}, column ${issue.column} to line ${issue.endLine}, column ${issue.endColumn}`);
+        
+        // Don't convert line numbers - API might already be using 0-based indexing
+        const convertedIssue = {
+          ...issue,
+          line: issue.line, // Keep original line number
+          endLine: issue.endLine, // Keep original endLine number
+          precise: true,
+          astGuided: true,
+          confidence: issue.confidence || 90
+        };
+        
+        console.log(`Converted issue: line ${convertedIssue.line}, column ${convertedIssue.column} to line ${convertedIssue.endLine}, column ${convertedIssue.endColumn}`);
+        return convertedIssue;
+      }) : [];
+
+      console.log('Converted issues without line adjustment:', JSON.stringify(issues, null, 2));
+
+      const result = {
         issues,
-        summary: data.summary || `AST-guided analysis found ${issues.length} precise vulnerabilities`,
-        overallRisk: data.overallRisk || "low",
-        isPartial: data.isPartial || false,
-        analysisTime: data.analysisTime
+        summary: responseData.summary || `AST-guided analysis found ${issues.length} precise vulnerabilities`,
+        overallRisk: responseData.overallRisk || "low",
+        isPartial: responseData.isPartial || false,
+        analysisTime: responseData.analysisTime
       };
+
+      console.log('Final AST analysis result:', JSON.stringify(result, null, 2));
+      return result;
     } catch (error) {
       console.error("Failed to parse AST-guided response:", error);
       return {
@@ -596,12 +638,24 @@ ${code}
       
       // If it's already an object, validate and normalize
       if (data && typeof data === 'object') {
+        // Handle wrapped response format with success/data structure
+        let responseData = data;
+        if (data.success && data.data) {
+          responseData = data.data;
+        }
+
+        const issues = Array.isArray(responseData.issues) ? responseData.issues.map((issue: any) => ({
+          ...issue,
+          line: issue.line, // Keep original line number - don't convert
+          endLine: issue.endLine, // Keep original endLine number - don't convert
+        })) : [];
+
         return {
-          issues: Array.isArray(data.issues) ? data.issues : [],
-          summary: data.summary || "Security analysis completed",
-          overallRisk: data.overallRisk || "low",
-          isPartial: data.isPartial || false,
-          analysisTime: data.analysisTime
+          issues,
+          summary: responseData.summary || "Security analysis completed",
+          overallRisk: responseData.overallRisk || "low",
+          isPartial: responseData.isPartial || false,
+          analysisTime: responseData.analysisTime
         };
       }
       

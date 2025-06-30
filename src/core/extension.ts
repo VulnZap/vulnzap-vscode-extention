@@ -751,11 +751,31 @@ export function activate(context: vscode.ExtensionContext) {
       forceShow: boolean = false
     ) {
       try {
+        console.log('=== VULNZAP SCAN STARTING ===');
+        console.log('Document:', document.uri.fsPath);
+        vscode.window.showInformationMessage('🔍 VulnZap: Starting security scan...');
+        
         updateStatusBar("scanning");
         const issues = await securityAnalyzer.analyzeDocument(document);
+        
+        console.log('=== SCAN COMPLETED ===');
+        console.log('Found issues:', issues.length);
+        
         diagnosticProvider.updateDiagnostics(document, issues);
         securityViewProvider.updateSecurityIssues(document, issues);
         updateStatusBar(); // Reset to normal status
+
+        // Add notification for debugging
+        if (issues.length > 0) {
+          const issueDetails = issues.map(issue => 
+            `Line ${issue.line + 1}: ${issue.message.substring(0, 50)}...`
+          ).join('; ');
+          vscode.window.showInformationMessage(
+            `🔍 VulnZap: Found ${issues.length} issue${issues.length === 1 ? '' : 's'}. ${issueDetails}`
+          );
+        } else {
+          vscode.window.showInformationMessage('✅ VulnZap: No security issues found');
+        }
 
         if (forceShow && issues.length > 0) {
           vscode.window.showInformationMessage(
@@ -765,7 +785,7 @@ export function activate(context: vscode.ExtensionContext) {
           );
         }
       } catch (error) {
-        console.error("Error scanning document:", error);
+        console.error("=== SCAN ERROR ===", error);
         updateStatusBar(); // Reset to normal status
         if (forceShow) {
           vscode.window.showErrorMessage("Error during security scan");

@@ -79,27 +79,49 @@ export class ASTSecurityAnalyzer {
    */
   async analyzeCode(code: string): Promise<ASTGuidedAnalysisResponse> {
     this.code = code;
-    this.vulnerableNodes = [];
-    this.nodeIndex.clear();
-
-    // Parse code into AST
+    console.log('Starting AST analysis for JavaScript code');
+    
+    // Parse the code into an AST
     const ast = this.parseCode(code);
     if (!ast) {
-      // Fallback to basic analysis if AST parsing fails
+      console.warn('AST parsing failed, returning fallback response');
       return this.createFallbackResponse();
     }
 
+    console.log('AST parsing successful, extracting security nodes');
+    
     // Extract security-relevant nodes
     const securityNodes = this.extractSecurityRelevantNodes(ast);
     
-    // Build AST-enhanced prompt for AI analysis
-    const prompt = this.buildASTEnhancedPrompt(code, securityNodes);
+    console.log(`Found ${securityNodes.length} security-relevant AST nodes`);
     
-    // Get AI analysis with precise node targeting
-    const aiResponse = await this.getAIAnalysis(prompt);
-    
-    // Convert AI response to precise coordinates
-    return this.convertToASTResponse(aiResponse, securityNodes);
+    // If no security nodes found, return early
+    if (securityNodes.length === 0) {
+      return {
+        vulnerabilities: [],
+        summary: 'No security-relevant code patterns found in AST',
+        overallRisk: 'low',
+        astStats: {
+          totalNodes: 0,
+          securityRelevantNodes: 0,
+          preciselyLocated: 0
+        }
+      };
+    }
+
+    try {
+      // Build enhanced prompt with AST context
+      const prompt = this.buildASTEnhancedPrompt(code, securityNodes);
+      
+      // Get AI analysis
+      const aiResponse = await this.getAIAnalysis(prompt);
+      
+      // Convert to standardized response
+      return this.convertToASTResponse(aiResponse, securityNodes);
+    } catch (error) {
+      console.error('AST-guided AI analysis failed:', error);
+      return this.createFallbackResponse();
+    }
   }
 
   /**
@@ -107,11 +129,51 @@ export class ASTSecurityAnalyzer {
    */
   protected parseCode(code: string): t.Node | null {
     try {
-      const parserOptions = this.getParserOptions();
-      return parse(code, parserOptions);
-    } catch (error) {
-      console.error('AST parsing failed:', error);
-      return null;
+      // First try as a module
+      const moduleOptions = this.getParserOptions();
+      return parse(code, moduleOptions);
+    } catch (moduleError: any) {
+      console.log('Module parsing failed, trying as script:', moduleError?.message || moduleError);
+      
+      try {
+        // Try as a script instead of module
+        const scriptOptions = {
+          ...this.getParserOptions(),
+          sourceType: 'script' as const
+        };
+        return parse(code, scriptOptions);
+      } catch (scriptError: any) {
+        console.log('Script parsing failed, trying with relaxed options:', scriptError?.message || scriptError);
+        
+        try {
+          // Try with more relaxed options
+          const relaxedOptions = {
+            sourceType: 'unambiguous' as const,
+            allowImportExportEverywhere: true,
+            allowReturnOutsideFunction: true,
+            allowHashBang: true,
+            allowAwaitOutsideFunction: true,
+            strictMode: false,
+            ranges: true,
+            locations: true,
+            plugins: [
+              'jsx' as any,
+              'objectRestSpread',
+              'functionBind',
+              'dynamicImport'
+            ]
+          };
+          
+          return parse(code, relaxedOptions);
+        } catch (relaxedError: any) {
+          console.error('All AST parsing attempts failed:');
+          console.error('Module error:', moduleError?.message || moduleError);
+          console.error('Script error:', scriptError?.message || scriptError);
+          console.error('Relaxed error:', relaxedError?.message || relaxedError);
+          console.error('Code that failed to parse:', code.substring(0, 200) + '...');
+          return null;
+        }
+      }
     }
   }
 
@@ -131,7 +193,7 @@ export class ASTSecurityAnalyzer {
       return {
         ...baseOptions,
         plugins: [
-          'typescript',
+          ['typescript', { dts: false }],
           'jsx',
           'decorators-legacy',
           'classProperties',
