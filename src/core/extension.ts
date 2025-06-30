@@ -1,36 +1,49 @@
 import * as vscode from "vscode";
-import { SecurityAnalyzer } from "./securityAnalyzer";
-import { DiagnosticProvider } from "./diagnosticProvider";
-import { APIProviderManager } from "./apiProviders";
-import { SecurityViewProvider } from "./securityViewProvider";
-import { VectorIndexer } from './vectorIndexer';
+import { SecurityAnalyzer } from "../security/securityAnalyzer";
+import { DiagnosticProvider } from "../providers/diagnosticProvider";
+import { DependencyDiagnosticProvider } from "../providers/dependencyDiagnosticProvider";
+import { APIProviderManager } from "../providers/apiProviders";
+import { SecurityViewProvider } from "../providers/securityViewProvider";
+import { VectorIndexer } from '../security/vectorIndexer';
+import { DependencyScanner } from '../dependencies/dependencyScanner';
 
+/**
+ * Main extension activation function
+ * Initializes all components and registers commands, listeners, and providers
+ */
 export function activate(context: vscode.ExtensionContext) {
   try {
-        // Initialize vector indexer first
-        const vectorIndexer = new VectorIndexer(context);
+    // Initialize core security analysis components
+    const vectorIndexer = new VectorIndexer(context);
     const securityAnalyzer = new SecurityAnalyzer();
     const diagnosticProvider = new DiagnosticProvider(context);
+    const dependencyDiagnosticProvider = new DependencyDiagnosticProvider(context);
     const securityViewProvider = new SecurityViewProvider(context);
+    const dependencyScanner = new DependencyScanner(context);
         
-        // Link the vector indexer with security analyzer
-        securityAnalyzer.setVectorIndexer(vectorIndexer);
+    // Establish connections between components for enhanced analysis
+    securityAnalyzer.setVectorIndexer(vectorIndexer);
 
-    // Register the tree data provider
+    // Register the security issues tree view in the sidebar
     vscode.window.registerTreeDataProvider(
       "vulnzap.securityView",
       securityViewProvider
     );
 
-    // Link diagnostic provider with security view provider
+    // Connect diagnostic providers with security view for synchronized updates
     diagnosticProvider.setSecurityViewProvider(securityViewProvider);
+    dependencyDiagnosticProvider.setSecurityViewProvider(securityViewProvider);
 
+    // Connect dependency scanner with dependency diagnostic provider
+    dependencyScanner.setDependencyDiagnosticProvider(dependencyDiagnosticProvider);
+
+    // Get user configuration preferences
     let isEnabled = vscode.workspace
       .getConfiguration("vulnzap")
       .get("enabled", true);
     let scanTimeout: NodeJS.Timeout | undefined;
 
-    // Status bar item
+    // Create status bar indicator showing extension state
     const statusBarItem = vscode.window.createStatusBarItem(
       vscode.StatusBarAlignment.Right,
       100
@@ -39,47 +52,42 @@ export function activate(context: vscode.ExtensionContext) {
     updateStatusBar();
     statusBarItem.show();
 
-    // Document change listener
-    const documentChangeListener = vscode.workspace.onDidChangeTextDocument(
-      async (event) => {
+    // Listen for file save events to trigger security analysis and dependency scanning
+    const documentSaveListener = vscode.workspace.onDidSaveTextDocument(
+      async (document) => {
         if (!isEnabled) return;
 
-        const document = event.document;
+        // Check if this is a dependency file and trigger dependency scan
+        await dependencyScanner.onFileSaved(document);
+
         if (!isSupportedLanguage(document.languageId)) return;
 
-        // Debounce the scanning
+        // Clear any pending timeouts since we're processing immediately
         if (scanTimeout) {
           clearTimeout(scanTimeout);
         }
 
-        const delay = vscode.workspace
-          .getConfiguration("vulnzap")
-          .get("scanDelay", 1000);
         const enableFastScan = vscode.workspace
           .getConfiguration("vulnzap")
           .get("enableFastScan", true);
 
-        // Show immediate basic feedback if fast scan is enabled
+        // Provide immediate feedback with basic pattern matching
         if (enableFastScan) {
-          // Quick pattern-based scan (immediate feedback)
-          setTimeout(async () => {
-            const basicIssues = await securityAnalyzer.fallbackToBasicAnalysis(
-              document
-            );
-            if (basicIssues.length > 0) {
-              diagnosticProvider.updateDiagnostics(document, basicIssues);
-              updateStatusBar("quick-scan");
-            }
-          }, 100); // Near-instant feedback
+          const basicIssues = await securityAnalyzer.fallbackToBasicAnalysis(
+            document
+          );
+          if (basicIssues.length > 0) {
+            diagnosticProvider.updateDiagnostics(document, basicIssues);
+            updateStatusBar("quick-scan");
+          }
         }
 
-        scanTimeout = setTimeout(async () => {
-          await scanDocument(document);
-        }, delay);
+        // Execute comprehensive AI-powered analysis
+        await scanDocument(document);
       }
     );
 
-    // Active editor change listener
+    // Listen for editor changes to scan newly opened files
     const activeEditorChangeListener =
       vscode.window.onDidChangeActiveTextEditor(async (editor) => {
         if (!isEnabled || !editor) return;
@@ -90,9 +98,10 @@ export function activate(context: vscode.ExtensionContext) {
         await scanDocument(document);
       });
 
-    // Commands
+    // Register all extension commands
     console.log("VulnZap: Registering commands...");
 
+    // Command: Enable security scanning
     const enableCommand = vscode.commands.registerCommand(
       "vulnzap.enable",
       () => {
@@ -104,7 +113,7 @@ export function activate(context: vscode.ExtensionContext) {
         updateStatusBar();
         vscode.window.showInformationMessage("Security review enabled");
 
-        // Scan current file if available
+        // Immediately scan the current file if one is open
         const activeEditor = vscode.window.activeTextEditor;
         if (activeEditor) {
           scanDocument(activeEditor.document);
@@ -112,6 +121,7 @@ export function activate(context: vscode.ExtensionContext) {
       }
     );
 
+    // Command: Disable security scanning
     const disableCommand = vscode.commands.registerCommand(
       "vulnzap.disable",
       () => {
@@ -122,11 +132,14 @@ export function activate(context: vscode.ExtensionContext) {
           .update("enabled", false, true);
         updateStatusBar();
         diagnosticProvider.clearAll();
+        dependencyDiagnosticProvider.clearAll();
         securityViewProvider.clearAllSecurityIssues();
+        securityViewProvider.clearDependencyVulnerabilities();
         vscode.window.showInformationMessage("Security review disabled");
       }
     );
 
+    // Command: Toggle security scanning on/off
     const toggleCommand = vscode.commands.registerCommand(
       "vulnzap.toggle",
       () => {
@@ -139,6 +152,7 @@ export function activate(context: vscode.ExtensionContext) {
       }
     );
 
+    // Command: Manually scan the current file
     const scanFileCommand = vscode.commands.registerCommand(
       "vulnzap.scanFile",
       async () => {
@@ -154,103 +168,24 @@ export function activate(context: vscode.ExtensionContext) {
       }
     );
 
+    // Command: Configure API provider selection
     const selectApiProviderCommand = vscode.commands.registerCommand(
       "vulnzap.selectApiProvider",
       async () => {
-        console.log("VulnZap: Select API provider command called");
-        try {
-          const providerManager = new APIProviderManager(context);
-
-          const providers = providerManager.getAllProviders();
-          const options = providers.map((provider) => ({
-            label: provider.displayName,
-            description: provider.isConfigured()
-              ? "✓ Configured"
-              : "⚠ Not configured",
-            detail: provider.name,
-            provider: provider,
-          }));
-
-          const selection = await vscode.window.showQuickPick(options, {
-            placeHolder:
-              "Select your preferred AI provider for security analysis",
-            matchOnDescription: true,
-            matchOnDetail: true,
-          });
-
-          if (selection) {
-            const config = vscode.workspace.getConfiguration("vulnzap");
-            await config.update(
-              "apiProvider",
-              selection.provider.name,
-              vscode.ConfigurationTarget.Global
-            );
-
-            if (selection.provider.isConfigured()) {
-              vscode.window.showInformationMessage(
-                `✅ ${selection.provider.displayName} selected and ready to use!`
-              );
-            } else {
-              const configNow = await vscode.window.showQuickPick(
-                ["Yes", "No"],
-                {
-                  placeHolder: `${selection.provider.displayName} is not configured. Configure it now?`,
-                }
-              );
-              if (configNow === "Yes") {
-                vscode.commands.executeCommand("vulnzap.configureApiKeys");
-              }
-            }
-          }
-        } catch (error) {
-          console.error("VulnZap: Error in selectApiProvider:", error);
-          vscode.window.showErrorMessage(
-            "Error selecting API provider: " + (error as Error).message
-          );
-        }
+        console.log("VulnZap: Configure VulnZap API command called");
+        await configureVulnZap(vscode.workspace.getConfiguration("vulnzap"));
       }
     );
 
+    // Command: Set up API keys for AI providers
     const configureApiKeysCommand = vscode.commands.registerCommand(
       "vulnzap.configureApiKeys",
       async () => {
         console.log("VulnZap: Configure API keys command called");
         try {
           const config = vscode.workspace.getConfiguration("vulnzap");
-          const selectedProvider = config.get<string>("apiProvider", "gemini");
-
-          const providerManager = new APIProviderManager(context);
-          const provider = providerManager.getProvider(selectedProvider);
-
-          if (!provider) {
-            vscode.window.showErrorMessage(
-              "Invalid API provider selected. Please select a provider first."
-            );
-            return;
-          }
-
-          // Configure based on selected provider
-          switch (provider.name) {
-            case "openai":
-              await configureOpenAI(config);
-              break;
-            case "gemini":
-              await configureGemini(config);
-              break;
-            case "openrouter":
-              await configureOpenRouter(config);
-              break;
-            case "vulnzap":
-              await configureVulnZap(config);
-              break;
-            default:
-              vscode.window.showErrorMessage("Unknown provider selected");
-              return;
-          }
-
-          vscode.window.showInformationMessage(
-            `✅ ${provider.displayName} configured successfully!`
-          );
+          await configureVulnZap(config);
+          vscode.window.showInformationMessage("✅ VulnZap API configured successfully!");
         } catch (error) {
           console.error("VulnZap: Error in configureApiKeys:", error);
           vscode.window.showErrorMessage(
@@ -260,7 +195,33 @@ export function activate(context: vscode.ExtensionContext) {
       }
     );
 
-    // Security View Commands
+    // Command: Toggle AST-guided precision analysis
+    const toggleASTCommand = vscode.commands.registerCommand(
+      "vulnzap.toggleASTPrecision",
+      async () => {
+        console.log("VulnZap: Toggle AST precision command called");
+        const config = vscode.workspace.getConfiguration("vulnzap");
+        const currentValue = config.get("enableASTPrecision", true);
+        const newValue = !currentValue;
+        
+        await config.update("enableASTPrecision", newValue, true);
+        
+        const message = newValue 
+          ? "✅ AST-guided precision analysis enabled" 
+          : "❌ AST-guided precision analysis disabled";
+        vscode.window.showInformationMessage(message);
+        
+        // Rescan current file if one is open
+        const activeEditor = vscode.window.activeTextEditor;
+        if (activeEditor && isEnabled) {
+          await scanDocument(activeEditor.document, true);
+        }
+      }
+    );
+
+    // Security View Commands - manage the security issues panel
+
+    // Command: Refresh the security view panel
     const refreshSecurityViewCommand = vscode.commands.registerCommand(
       "vulnzap.refreshSecurityView",
       () => {
@@ -270,16 +231,20 @@ export function activate(context: vscode.ExtensionContext) {
       }
     );
 
+    // Command: Clear all detected security issues
     const clearAllIssuesCommand = vscode.commands.registerCommand(
       "vulnzap.clearAllIssues",
       () => {
         console.log("VulnZap: Clear all issues command called");
         diagnosticProvider.clearAll();
+        dependencyDiagnosticProvider.clearAll();
         securityViewProvider.clearAllSecurityIssues();
+        securityViewProvider.clearDependencyVulnerabilities();
         vscode.window.showInformationMessage("All security issues cleared");
       }
     );
 
+    // Command: Scan the entire workspace
     const scanWorkspaceCommand = vscode.commands.registerCommand(
       "vulnzap.scanWorkspace",
       async () => {
@@ -547,6 +512,222 @@ export function activate(context: vscode.ExtensionContext) {
       }
     });
 
+    // Dependency Scanning Commands
+    const scanDependenciesCommand = vscode.commands.registerCommand('vulnzap.scanDependencies', async () => {
+      console.log('VulnZap: Scan dependencies command called');
+      
+      try {
+        await vscode.window.withProgress(
+          {
+            location: vscode.ProgressLocation.Notification,
+            title: "Scanning dependencies for vulnerabilities...",
+            cancellable: false,
+          },
+          async () => {
+            const results = await dependencyScanner.scanWorkspaceDependencies();
+            
+            if (results.length === 0) {
+              vscode.window.showInformationMessage('No dependencies found or no dependency files detected in workspace.');
+            } else {
+              const totalVulns = results.reduce((sum, result) => sum + result.vulnerabilities.length, 0);
+              const totalPackages = results.reduce((sum, result) => sum + result.totalPackages, 0);
+              
+              if (totalVulns === 0) {
+                vscode.window.showInformationMessage(`✅ No vulnerabilities found in ${totalPackages} dependencies across ${results.length} project(s).`);
+              } else {
+                vscode.window.showWarningMessage(`🔍 Found ${totalVulns} vulnerabilities in ${totalPackages} dependencies. Check notifications for details.`);
+              }
+            }
+          }
+        );
+      } catch (error) {
+        console.error('Error scanning dependencies:', error);
+        vscode.window.showErrorMessage('Error scanning dependencies: ' + (error as Error).message);
+      }
+    });
+
+    const forceDependencyScanCommand = vscode.commands.registerCommand('vulnzap.forceDependencyScan', async () => {
+      console.log('VulnZap: Force dependency scan command called');
+      
+      try {
+        await vscode.window.withProgress(
+          {
+            location: vscode.ProgressLocation.Notification,
+            title: "Force scanning dependencies (ignoring cache)...",
+            cancellable: false,
+          },
+          async () => {
+            const results = await dependencyScanner.forceScan();
+            
+            if (results.length === 0) {
+              vscode.window.showInformationMessage('No dependencies found or no dependency files detected in workspace.');
+            } else {
+              const totalVulns = results.reduce((sum, result) => sum + result.vulnerabilities.length, 0);
+              const totalPackages = results.reduce((sum, result) => sum + result.totalPackages, 0);
+              
+              if (totalVulns === 0) {
+                vscode.window.showInformationMessage(`✅ Fresh scan complete: No vulnerabilities found in ${totalPackages} dependencies.`);
+              } else {
+                vscode.window.showWarningMessage(`🔍 Fresh scan complete: Found ${totalVulns} vulnerabilities in ${totalPackages} dependencies.`);
+              }
+            }
+          }
+        );
+      } catch (error) {
+        console.error('Error force scanning dependencies:', error);
+        vscode.window.showErrorMessage('Error force scanning dependencies: ' + (error as Error).message);
+      }
+    });
+
+    const dependencyCacheStatsCommand = vscode.commands.registerCommand('vulnzap.dependencyCacheStats', async () => {
+      console.log('VulnZap: Dependency cache stats command called');
+      
+      try {
+        const stats = await dependencyScanner.getCacheInfo();
+        const oldestDate = stats.oldestEntry ? new Date(stats.oldestEntry).toLocaleString() : 'N/A';
+        const newestDate = stats.newestEntry ? new Date(stats.newestEntry).toLocaleString() : 'N/A';
+        const sizeInMB = (stats.totalSize / (1024 * 1024)).toFixed(2);
+        
+        const message = `📊 Dependency Cache Statistics\n\n` +
+          `Total Entries: ${stats.totalEntries}\n` +
+          `Total Size: ${sizeInMB} MB\n` +
+          `Expired Entries: ${stats.expiredEntries}\n` +
+          `Oldest Entry: ${oldestDate}\n` +
+          `Newest Entry: ${newestDate}`;
+        
+        vscode.window.showInformationMessage(message, 'Clean Cache').then(selection => {
+          if (selection === 'Clean Cache') {
+            vscode.commands.executeCommand('vulnzap.cleanDependencyCache');
+          }
+        });
+      } catch (error) {
+        console.error('Error getting cache stats:', error);
+        vscode.window.showErrorMessage('Error getting cache statistics: ' + (error as Error).message);
+      }
+    });
+
+    const cleanDependencyCacheCommand = vscode.commands.registerCommand('vulnzap.cleanDependencyCache', async () => {
+      console.log('VulnZap: Clean dependency cache command called');
+      
+      try {
+        const cleanedCount = await dependencyScanner.cleanupCache();
+        vscode.window.showInformationMessage(`🧹 Cleaned up ${cleanedCount} expired cache entries.`);
+      } catch (error) {
+        console.error('Error cleaning cache:', error);
+        vscode.window.showErrorMessage('Error cleaning cache: ' + (error as Error).message);
+      }
+    });
+
+    // Dependency Fix Commands
+    const updateDependencyToVersionCommand = vscode.commands.registerCommand('vulnzap.updateDependencyToVersion', async (packageNameOrUri?: string | vscode.Uri, packageName?: string, version?: string) => {
+      console.log('VulnZap: Update dependency to version command called');
+      
+      try {
+        let targetPackageName: string;
+        let targetVersion: string;
+        let packageJsonUri: vscode.Uri;
+
+        if (packageNameOrUri instanceof vscode.Uri) {
+          // Called from code action with document URI
+          packageJsonUri = packageNameOrUri;
+          targetPackageName = packageName!;
+          targetVersion = version!;
+        } else {
+          // Called from sidebar with package name directly
+          targetPackageName = packageNameOrUri!;
+          targetVersion = packageName!;
+          
+          // Find package.json in workspace
+          const workspaceFolders = vscode.workspace.workspaceFolders;
+          if (!workspaceFolders) {
+            vscode.window.showErrorMessage('No workspace folder found');
+            return;
+          }
+          packageJsonUri = vscode.Uri.file(`${workspaceFolders[0].uri.fsPath}/package.json`);
+        }
+
+        const document = await vscode.workspace.openTextDocument(packageJsonUri);
+        const edit = new vscode.WorkspaceEdit();
+        
+        const text = document.getText();
+        const packageRegex = new RegExp(`("${targetPackageName}"\\s*:\\s*"[^"]*")`, 'g');
+        const match = packageRegex.exec(text);
+        
+        if (match) {
+          const startPos = document.positionAt(text.indexOf(match[1]));
+          const endPos = document.positionAt(text.indexOf(match[1]) + match[1].length);
+          const newText = `"${targetPackageName}": "${targetVersion}"`;
+          
+          edit.replace(packageJsonUri, new vscode.Range(startPos, endPos), newText);
+          
+          const success = await vscode.workspace.applyEdit(edit);
+          if (success) {
+            await document.save();
+            vscode.window.showInformationMessage(`✅ Updated ${targetPackageName} to version ${targetVersion}`);
+          } else {
+            vscode.window.showErrorMessage(`Failed to update ${targetPackageName}`);
+          }
+        } else {
+          vscode.window.showErrorMessage(`Package ${targetPackageName} not found in package.json`);
+        }
+      } catch (error) {
+        console.error('Error updating dependency:', error);
+        vscode.window.showErrorMessage('Error updating dependency: ' + (error as Error).message);
+      }
+    });
+
+    const showUpdateCommandCmd = vscode.commands.registerCommand('vulnzap.showUpdateCommand', async (packageName: string) => {
+      console.log('VulnZap: Show update command called for:', packageName);
+      
+      const command = `npm install ${packageName}@latest`;
+      
+      const action = await vscode.window.showInformationMessage(
+        `To update ${packageName}, run this command in your terminal:`,
+        'Copy Command',
+        'Open Terminal'
+      );
+      
+      if (action === 'Copy Command') {
+        await vscode.env.clipboard.writeText(command);
+        vscode.window.showInformationMessage('Command copied to clipboard!');
+      } else if (action === 'Open Terminal') {
+        const terminal = vscode.window.createTerminal('VulnZap Dependency Update');
+        terminal.show();
+        terminal.sendText(command);
+      }
+    });
+
+    const fixAllDependenciesCommand = vscode.commands.registerCommand('vulnzap.fixAllDependencies', async () => {
+      console.log('VulnZap: Fix all dependencies command called');
+      
+      try {
+        const workspaceFolders = vscode.workspace.workspaceFolders;
+        if (!workspaceFolders) {
+          vscode.window.showErrorMessage('No workspace folder found');
+          return;
+        }
+
+        const action = await vscode.window.showWarningMessage(
+          'This will update all dependencies to their latest versions. This may introduce breaking changes. Are you sure?',
+          'Update All',
+          'Cancel'
+        );
+
+        if (action === 'Update All') {
+          const terminal = vscode.window.createTerminal('VulnZap Fix All Dependencies');
+          terminal.show();
+          
+          // Use npm update to update all dependencies
+          terminal.sendText('npm update');
+          
+          vscode.window.showInformationMessage('🔄 Running npm update to fix all dependencies. Check the terminal for progress.');
+        }
+      } catch (error) {
+        console.error('Error fixing all dependencies:', error);
+        vscode.window.showErrorMessage('Error fixing all dependencies: ' + (error as Error).message);
+      }
+    });
+
     console.log("VulnZap: All commands registered successfully");
 
     // Configuration change listener
@@ -606,6 +787,10 @@ export function activate(context: vscode.ExtensionContext) {
 
     function updateStatusBar(status: string = "") {
       if (isEnabled) {
+        const config = vscode.workspace.getConfiguration("vulnzap");
+        const astEnabled = config.get("enableASTPrecision", true);
+        const precision = astEnabled ? "AST" : "Standard";
+        
         if (status === "quick-scan") {
           statusBarItem.text = "$(shield) Security: Quick Scan";
           statusBarItem.tooltip =
@@ -613,12 +798,12 @@ export function activate(context: vscode.ExtensionContext) {
           statusBarItem.backgroundColor = undefined;
         } else if (status === "scanning") {
           statusBarItem.text = "$(loading~spin) Security: Scanning...";
-          statusBarItem.tooltip = "AI security analysis in progress...";
+          statusBarItem.tooltip = `${precision} security analysis in progress...`;
           statusBarItem.backgroundColor = undefined;
         } else {
-          statusBarItem.text = "$(shield) Security: ON";
+          statusBarItem.text = `$(shield) Security: ON (${precision})`;
           statusBarItem.tooltip =
-            "Security review is enabled. Click to disable.";
+            `Security review is enabled with ${precision.toLowerCase()} precision. Click to disable.`;
           statusBarItem.backgroundColor = undefined;
         }
       } else {
@@ -633,7 +818,7 @@ export function activate(context: vscode.ExtensionContext) {
     // Register disposables
     context.subscriptions.push(
       statusBarItem,
-      documentChangeListener,
+      documentSaveListener,
       activeEditorChangeListener,
       enableCommand,
       disableCommand,
@@ -641,6 +826,7 @@ export function activate(context: vscode.ExtensionContext) {
       scanFileCommand,
       selectApiProviderCommand,
       configureApiKeysCommand,
+      toggleASTCommand,
       refreshSecurityViewCommand,
       clearAllIssuesCommand,
       scanWorkspaceCommand,
@@ -649,6 +835,13 @@ export function activate(context: vscode.ExtensionContext) {
       indexStatsCommand,
       clearIndexCommand,
       findSimilarCodeCommand,
+      scanDependenciesCommand,
+      forceDependencyScanCommand,
+      dependencyCacheStatsCommand,
+      cleanDependencyCacheCommand,
+      updateDependencyToVersionCommand,
+      showUpdateCommandCmd,
+      fixAllDependenciesCommand,
       configChangeListener,
       diagnosticProvider
     );
@@ -661,6 +854,19 @@ export function activate(context: vscode.ExtensionContext) {
       isSupportedLanguage(activeEditor.document.languageId)
     ) {
       scanDocument(activeEditor.document);
+    }
+
+    // Initial dependency scan on startup (if enabled)
+    const dependencyScanOnStartup = vscode.workspace.getConfiguration('vulnzap').get<boolean>('dependencyScanOnStartup', true);
+    if (dependencyScanOnStartup) {
+      setTimeout(async () => {
+        try {
+          console.log('VulnZap: Performing initial dependency scan...');
+          await dependencyScanner.scanWorkspaceDependencies();
+        } catch (error) {
+          console.error('Error during initial dependency scan:', error);
+        }
+      }, 2000); // Wait 2 seconds after activation to avoid blocking startup
     }
 
     // After activation, call providerManager.setContext(context) if needed
@@ -676,108 +882,6 @@ export function activate(context: vscode.ExtensionContext) {
 
 export function deactivate() {
   console.log("VulnZap deactivated");
-}
-
-async function configureOpenAI(config: vscode.WorkspaceConfiguration) {
-  const apiKey = await vscode.window.showInputBox({
-    prompt: "Enter your OpenAI API key",
-    password: true,
-    value: config.get("openaiApiKey", ""),
-    placeHolder: "sk-...",
-  });
-
-  if (apiKey !== undefined) {
-    await config.update(
-      "openaiApiKey",
-      apiKey,
-      vscode.ConfigurationTarget.Global
-    );
-  }
-
-  const model = await vscode.window.showQuickPick(
-    [
-      { label: "GPT-4", value: "gpt-4" },
-      { label: "GPT-4 Turbo", value: "gpt-4-turbo" },
-      { label: "GPT-3.5 Turbo", value: "gpt-3.5-turbo" },
-    ],
-    {
-      placeHolder: "Select OpenAI model",
-    }
-  );
-
-  if (model) {
-    await config.update(
-      "openaiModel",
-      model.value,
-      vscode.ConfigurationTarget.Global
-    );
-  }
-}
-
-async function configureGemini(config: vscode.WorkspaceConfiguration) {
-  const apiKey = await vscode.window.showInputBox({
-    prompt: "Enter your Google Gemini API key",
-    password: true,
-    value: config.get("geminiApiKey", ""),
-    placeHolder: "Your Gemini API key",
-  });
-
-  if (apiKey !== undefined) {
-    await config.update(
-      "geminiApiKey",
-      apiKey,
-      vscode.ConfigurationTarget.Global
-    );
-  }
-}
-
-async function configureOpenRouter(config: vscode.WorkspaceConfiguration) {
-  const apiKey = await vscode.window.showInputBox({
-    prompt: "Enter your OpenRouter API key",
-    password: true,
-    value: config.get("openrouterApiKey", ""),
-    placeHolder: "sk-or-...",
-  });
-
-  if (apiKey !== undefined) {
-    await config.update(
-      "openrouterApiKey",
-      apiKey,
-      vscode.ConfigurationTarget.Global
-    );
-  }
-
-  const model = await vscode.window.showQuickPick(
-    [
-      {
-        label: "Claude 3 Haiku (Fast & Cheap)",
-        value: "anthropic/claude-3-haiku",
-      },
-      {
-        label: "Claude 3 Sonnet (Balanced)",
-        value: "anthropic/claude-3-sonnet",
-      },
-      {
-        label: "Claude 3 Opus (Most Capable)",
-        value: "anthropic/claude-3-opus",
-      },
-      { label: "GPT-4", value: "openai/gpt-4" },
-      { label: "GPT-3.5 Turbo", value: "openai/gpt-3.5-turbo" },
-      { label: "Llama 2 70B", value: "meta-llama/llama-2-70b-chat" },
-      { label: "Mixtral 8x7B", value: "mistralai/mixtral-8x7b-instruct" },
-    ],
-    {
-      placeHolder: "Select model to use",
-    }
-  );
-
-  if (model) {
-    await config.update(
-      "openrouterModel",
-      model.value,
-      vscode.ConfigurationTarget.Global
-    );
-  }
 }
 
 async function configureVulnZap(config: vscode.WorkspaceConfiguration) {

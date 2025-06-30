@@ -1,8 +1,8 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
-import { APIProviderManager } from './apiProviders';
-import { ContextAnalyzer, CodeContext } from './contextAnalyzer';
+import { APIProviderManager } from '../providers/apiProviders';
+import { ContextAnalyzer, CodeContext } from '../utils/contextAnalyzer';
 
 export interface CodeChunk {
     id: string;

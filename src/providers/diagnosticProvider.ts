@@ -1,15 +1,20 @@
 import * as vscode from 'vscode';
-import { SecurityIssue } from './securityAnalyzer';
+import { SecurityIssue } from '../security/securityAnalyzer';
 
+/**
+ * Handles VS Code diagnostic integration for security issues
+ * Manages the display of security problems in the editor and provides quick fixes
+ */
 export class DiagnosticProvider implements vscode.Disposable {
     private diagnosticCollection: vscode.DiagnosticCollection;
     private codeActionProvider: vscode.Disposable;
     private securityViewProvider?: any; // Will be set by extension.ts
 
     constructor(context: vscode.ExtensionContext) {
+        // Create a diagnostic collection for security issues
         this.diagnosticCollection = vscode.languages.createDiagnosticCollection('security-reviewer');
         
-        // Register code action provider for quick fixes
+        // Register quick fix provider for automatic issue resolution
         this.codeActionProvider = vscode.languages.registerCodeActionsProvider(
             ['javascript', 'typescript', 'python', 'java'],
             new SecurityCodeActionProvider(),
@@ -21,6 +26,10 @@ export class DiagnosticProvider implements vscode.Disposable {
         context.subscriptions.push(this.diagnosticCollection, this.codeActionProvider);
     }
 
+    /**
+     * Updates VS Code diagnostics with security issues
+     * Converts SecurityIssue objects to VS Code Diagnostic objects with enhanced information
+     */
     updateDiagnostics(document: vscode.TextDocument, issues: SecurityIssue[]) {
         const diagnostics: vscode.Diagnostic[] = issues.map(issue => {
             const range = new vscode.Range(
@@ -28,7 +37,7 @@ export class DiagnosticProvider implements vscode.Disposable {
                 new vscode.Position(issue.endLine, issue.endColumn)
             );
 
-            // Enhanced message with confidence and CVE information
+            // Build enhanced message with confidence and CVE information
             let enhancedMessage = issue.message;
             if (issue.confidence) {
                 enhancedMessage += ` (Confidence: ${issue.confidence}%)`;
@@ -46,7 +55,7 @@ export class DiagnosticProvider implements vscode.Disposable {
             diagnostic.code = issue.code;
             diagnostic.source = 'AI Security Reviewer';
             
-            // Add related information for suggestions, CVEs, and search results
+            // Add related information for enhanced context
             const relatedInfo: vscode.DiagnosticRelatedInformation[] = [];
             
             if (issue.suggestion) {
@@ -82,6 +91,9 @@ export class DiagnosticProvider implements vscode.Disposable {
         this.diagnosticCollection.set(document.uri, diagnostics);
     }
 
+    /**
+     * Clears diagnostics for a specific document
+     */
     clearDiagnostics(document: vscode.TextDocument) {
         this.diagnosticCollection.delete(document.uri);
         if (this.securityViewProvider) {
@@ -89,6 +101,9 @@ export class DiagnosticProvider implements vscode.Disposable {
         }
     }
 
+    /**
+     * Clears all diagnostics across all documents
+     */
     clearAll() {
         this.diagnosticCollection.clear();
         if (this.securityViewProvider) {
@@ -96,16 +111,26 @@ export class DiagnosticProvider implements vscode.Disposable {
         }
     }
 
+    /**
+     * Links this provider with the security view for synchronized updates
+     */
     setSecurityViewProvider(provider: any) {
         this.securityViewProvider = provider;
     }
 
+    /**
+     * Cleans up resources when the extension is deactivated
+     */
     dispose() {
         this.diagnosticCollection.dispose();
         this.codeActionProvider.dispose();
     }
 }
 
+/**
+ * Provides quick fix code actions for common security issues
+ * Offers automatic remediation suggestions that users can apply with one click
+ */
 class SecurityCodeActionProvider implements vscode.CodeActionProvider {
     provideCodeActions(
         document: vscode.TextDocument,

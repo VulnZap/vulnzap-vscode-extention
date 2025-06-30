@@ -5,7 +5,7 @@ const config = {
   target: 'node', // VS Code extensions run in a Node.js context
   mode: 'none', // this leaves the source code as close as possible to the original
 
-  entry: './src/extension.ts', // the entry point of this extension
+  entry: './src/core/extension.ts', // the entry point of this extension
   output: {
     // the bundle is stored in the 'dist' folder (check package.json)
     path: path.resolve(__dirname, 'dist'),

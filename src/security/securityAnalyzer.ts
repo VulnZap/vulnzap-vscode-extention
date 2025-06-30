@@ -1,9 +1,15 @@
 import * as vscode from 'vscode';
 import axios from 'axios';
-import { APIProviderManager, AISecurityResponse } from './apiProviders';
-import { ContextAnalyzer, CodeContext, SecurityContext } from './contextAnalyzer';
+import { APIProviderManager, AISecurityResponse } from '../providers/apiProviders';
+import { ContextAnalyzer, CodeContext, SecurityContext } from '../utils/contextAnalyzer';
 import { VectorIndexer, CodeChunk, SearchResult } from './vectorIndexer';
+import { ASTAnalyzerFactory } from './astAnalyzerFactory';
+import { ASTSecurityAnalyzer } from './astAnalyzer';
 
+/**
+ * Represents a security vulnerability found in code
+ * Contains location information, severity, and remediation suggestions
+ */
 export interface SecurityIssue {
     line: number;
     column: number;
@@ -20,36 +26,44 @@ export interface SecurityIssue {
     similarVulnerabilities?: CodeChunk[];
 }
 
+/**
+ * Core security analysis engine that combines AI-powered detection with traditional pattern matching
+ * Provides context-aware vulnerability detection with vector-based code similarity analysis
+ */
 export class SecurityAnalyzer {
     private apiProviderManager: APIProviderManager;
     private contextAnalyzer: ContextAnalyzer;
     private vectorIndexer: VectorIndexer | null = null;
     private cache = new Map<string, { result: AISecurityResponse; timestamp: number }>();
-    private readonly CACHE_DURATION = 10 * 60 * 1000; // 10 minutes for better performance
-    private readonly MAX_CHUNK_SIZE = 4000; // Increased from 10000, but we'll chunk it
-    private readonly MAX_FILE_SIZE = 50000; // Increased limit
+    
+    // Configuration constants for analysis optimization
+    private readonly CACHE_DURATION = 10 * 60 * 1000; // 10 minutes to reduce API costs
+    private readonly MAX_CHUNK_SIZE = 4000; // Maximum size for AI analysis chunks
+    private readonly MAX_FILE_SIZE = 50000; // Files larger than this use basic analysis only
 
     constructor(vectorIndexer?: VectorIndexer) {
         this.apiProviderManager = new APIProviderManager();
         this.contextAnalyzer = new ContextAnalyzer();
         this.vectorIndexer = vectorIndexer || null;
-        
-        // Listen for configuration changes to update the current provider
-        vscode.workspace.onDidChangeConfiguration((event) => {
-            if (event.affectsConfiguration('vulnzap.apiProvider')) {
-                this.apiProviderManager.updateCurrentProvider();
-            }
-        });
     }
 
+    /**
+     * Sets the vector indexer for enhanced semantic analysis
+     */
     setVectorIndexer(vectorIndexer: VectorIndexer): void {
         this.vectorIndexer = vectorIndexer;
     }
 
+    /**
+     * Main entry point for document analysis
+     * Combines AST-guided precision with AI analysis, context awareness and vector similarity matching
+     */
     async analyzeDocument(document: vscode.TextDocument): Promise<SecurityIssue[]> {
-        const aiEnabled = vscode.workspace.getConfiguration('vulnzap').get('enableAIAnalysis', true);
+        const config = vscode.workspace.getConfiguration('vulnzap');
+        const aiEnabled = config.get('enableAIAnalysis', true);
+        const astPrecisionEnabled = config.get('enableASTPrecision', true);
         
-        // First, analyze the document context to understand its purpose and environment
+        // Analyze document context to understand its purpose and reduce false positives
         const codeContext = await this.contextAnalyzer.analyzeDocumentContext(document);
         console.log(`Context analysis: fileType=${codeContext.fileType}, framework=${codeContext.framework}, isTest=${codeContext.isTestFile}`);
         
@@ -76,9 +90,13 @@ export class SecurityAnalyzer {
             const text = document.getText();
             const languageId = document.languageId;
             
-            console.log(`Analyzing ${languageId} file with ${text.length} characters using ${currentProvider.displayName}`);
+            // Determine analysis method based on language support and user preference
+            const useASTAnalysis = astPrecisionEnabled && ASTAnalyzerFactory.isSupported(languageId);
+            const analysisMethod = useASTAnalysis ? 'AST-guided precision' : 'traditional';
             
-            // Handle large files by chunking
+            console.log(`Analyzing ${languageId} file with ${text.length} characters using ${currentProvider.displayName} (${analysisMethod})`);
+            
+            // Skip AI analysis for very large files to avoid performance issues
             if (text.length > this.MAX_FILE_SIZE) {
                 vscode.window.showWarningMessage(
                     `File too large (${text.length} chars). Using basic pattern matching only.`
@@ -87,9 +105,9 @@ export class SecurityAnalyzer {
                 return this.filterIssuesWithContext(basicIssues, document, codeContext);
             }
             
-            // Include context information in cache key for context-aware caching
+            // Check cache for recent analysis results to reduce API costs
             const contextHash = this.getContextHash(codeContext);
-            const cacheKey = this.getCacheKey(text, languageId, currentProvider.name) + '_' + contextHash;
+            const cacheKey = this.getCacheKey(text, languageId, currentProvider.name) + '_' + contextHash + '_' + analysisMethod;
             const cached = this.cache.get(cacheKey);
             if (cached && Date.now() - cached.timestamp < this.CACHE_DURATION) {
                 console.log('Using cached analysis result');
@@ -98,32 +116,48 @@ export class SecurityAnalyzer {
                 return this.filterIssuesWithContext(enhancedIssues, document, codeContext);
             }
 
-            // For files larger than chunk size, analyze in chunks
+            // Handle large files by breaking them into analyzable chunks
             let allIssues: SecurityIssue[] = [];
             if (text.length > this.MAX_CHUNK_SIZE) {
                 console.log('File large, analyzing in chunks...');
                 allIssues = await this.analyzeInChunks(text, languageId);
             } else {
-                // Enhance the AI prompt with context information AND vector context
-                const contextEnhancedCode = await this.buildVectorEnhancedPrompt(text, languageId, codeContext, document);
-                const aiResponse = await this.apiProviderManager.analyzeCode(contextEnhancedCode, languageId);
+                // Use AST-guided analysis if available, otherwise fall back to enhanced prompt
+                let aiResponse: AISecurityResponse;
                 
-                // Cache the result
+                if (useASTAnalysis) {
+                    console.log('Using AST-guided analysis for precise vulnerability detection');
+                    aiResponse = await this.apiProviderManager.analyzeCode(text, languageId);
+                } else {
+                    // Build enhanced prompt with context and vector-based insights for non-AST languages
+                    const contextEnhancedCode = await this.buildVectorEnhancedPrompt(text, languageId, codeContext, document);
+                    aiResponse = await this.apiProviderManager.analyzeCode(contextEnhancedCode, languageId);
+                }
+                
+                // Store result in cache for future use
                 this.cache.set(cacheKey, { result: aiResponse, timestamp: Date.now() });
                 
                 allIssues = this.convertAIResponseToSecurityIssues(aiResponse);
             }
             
-            // Refine issue positioning for better accuracy
-            const refinedIssues = this.refineIssueLocations(allIssues, document);
+            // For AST-guided analysis, issues are already precise; for others, refine locations
+            let refinedIssues: SecurityIssue[];
+            if (useASTAnalysis) {
+                console.log('Using precise AST-guided issue locations');
+                refinedIssues = allIssues; // Already precise from AST analysis
+            } else {
+                // Improve issue location accuracy by analyzing surrounding code
+                refinedIssues = this.refineIssueLocations(allIssues, document);
+            }
             
-            // Enhance issues with vector context before filtering
+            // Add vector-based context and similar vulnerability examples
             const vectorEnhancedIssues = await this.enhanceIssuesWithVectorContext(refinedIssues, document, codeContext);
             
-            // Apply context-aware filtering to reduce false positives
+            // Filter out likely false positives based on code context
             const contextFilteredIssues = this.filterIssuesWithContext(vectorEnhancedIssues, document, codeContext);
             
-            console.log(`Analysis complete: found ${contextFilteredIssues.length} issues (filtered from ${refinedIssues.length} total)`);
+            const preciseCount = contextFilteredIssues.filter(issue => (issue as any).precise).length;
+            console.log(`Analysis complete: found ${contextFilteredIssues.length} issues (${preciseCount} precise, filtered from ${refinedIssues.length} total)`);
             return contextFilteredIssues;
         } catch (error) {
             console.error('AI analysis failed:', error);
@@ -133,11 +167,15 @@ export class SecurityAnalyzer {
         }
     }
 
+    /**
+     * Breaks large files into overlapping chunks for analysis
+     * Ensures no vulnerabilities are missed at chunk boundaries
+     */
     private async analyzeInChunks(code: string, language: string): Promise<SecurityIssue[]> {
         const lines = code.split('\n');
         const chunks: { text: string; startLine: number }[] = [];
         
-        // Create overlapping chunks to avoid missing issues at boundaries
+        // Create overlapping chunks to catch vulnerabilities spanning boundaries
         let currentChunk = '';
         let currentStartLine = 0;
         let currentLineCount = 0;
@@ -150,7 +188,7 @@ export class SecurityAnalyzer {
             if (currentChunk.length >= this.MAX_CHUNK_SIZE || currentLineCount >= linesPerChunk) {
                 chunks.push({ text: currentChunk, startLine: currentStartLine });
                 
-                // Start next chunk with some overlap (last 10 lines)
+                // Create overlap with previous chunk to avoid missing boundary issues
                 const overlapLines = Math.min(10, currentLineCount);
                 const overlapStart = Math.max(0, i - overlapLines + 1);
                 currentChunk = lines.slice(overlapStart, i + 1).join('\n') + '\n';
@@ -159,14 +197,14 @@ export class SecurityAnalyzer {
             }
         }
         
-        // Add remaining chunk
+        // Process any remaining content
         if (currentChunk.trim()) {
             chunks.push({ text: currentChunk, startLine: currentStartLine });
         }
         
         console.log(`Analyzing ${chunks.length} chunks`);
         
-        // Analyze each chunk
+        // Analyze each chunk independently
         const allIssues: SecurityIssue[] = [];
         for (let i = 0; i < chunks.length; i++) {
             try {
@@ -174,7 +212,7 @@ export class SecurityAnalyzer {
                 const aiResponse = await this.apiProviderManager.analyzeCode(chunks[i].text, language);
                 const chunkIssues = this.convertAIResponseToSecurityIssues(aiResponse);
                 
-                // Adjust line numbers for chunk offset
+                // Adjust line numbers to account for chunk positioning in the original file
                 chunkIssues.forEach(issue => {
                     issue.line += chunks[i].startLine;
                     issue.endLine += chunks[i].startLine;
@@ -183,15 +221,18 @@ export class SecurityAnalyzer {
                 allIssues.push(...chunkIssues);
             } catch (error) {
                 console.error(`Failed to analyze chunk ${i + 1}:`, error);
-                // Continue with other chunks
+                // Continue with remaining chunks even if one fails
             }
         }
         
-        // Remove duplicates based on line and message
+        // Remove duplicates that may occur at chunk boundaries
         const uniqueIssues = this.removeDuplicateIssues(allIssues);
         return uniqueIssues;
     }
 
+    /**
+     * Removes duplicate security issues based on location and content
+     */
     private removeDuplicateIssues(issues: SecurityIssue[]): SecurityIssue[] {
         const seen = new Set<string>();
         return issues.filter(issue => {
@@ -701,6 +742,12 @@ export class SecurityAnalyzer {
                 enhancedPrompt += 'The following similar code patterns were found in the codebase that may help inform your analysis:\n\n';
 
                 for (const pattern of similarPatterns) {
+                    // Add null check for pattern.chunk.content
+                    if (!pattern.chunk.content) {
+                        console.warn(`Pattern chunk has undefined content for ${pattern.chunk.filePath}`);
+                        continue;
+                    }
+                    
                     enhancedPrompt += `### Pattern from ${pattern.chunk.filePath} (similarity: ${(pattern.similarity * 100).toFixed(1)}%):\n`;
                     enhancedPrompt += `Security relevance: ${pattern.chunk.securityRelevance}\n`;
                     enhancedPrompt += '```\n';
@@ -722,7 +769,10 @@ export class SecurityAnalyzer {
                 if (frameworkPatterns.length > 0) {
                     enhancedPrompt += '\n## Framework-Specific Security Patterns:\n';
                     for (const pattern of frameworkPatterns) {
-                        enhancedPrompt += `- Pattern: ${pattern.chunk.content.substring(0, 200)}...\n`;
+                        // Add null check for pattern.chunk.content
+                        if (pattern.chunk.content) {
+                            enhancedPrompt += `- Pattern: ${pattern.chunk.content.substring(0, 200)}...\n`;
+                        }
                     }
                 }
             }
@@ -741,6 +791,11 @@ export class SecurityAnalyzer {
         const suggestions: string[] = [];
 
         for (const vuln of similarVulnerabilities.slice(0, 3)) {
+            // Add null check for vuln.content
+            if (!vuln.content) {
+                continue;
+            }
+            
             // Extract potential fixes from similar patterns
             if (vuln.content.includes('sanitize') || vuln.content.includes('escape')) {
                 suggestions.push(`Consider sanitization (similar pattern in ${vuln.filePath})`);

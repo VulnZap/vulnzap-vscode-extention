@@ -1,8 +1,8 @@
 {
   "name": "vulnzap",
   "displayName": "VulnZap",
-  "description": "AI-powered real-time security analysis for JavaScript, TypeScript, Python, and Java code. Detects vulnerabilities like XSS, SQL injection, and weak cryptography with high accuracy.",
-  "version": "0.1.9",
+  "description": "AI-powered security analysis for JavaScript, TypeScript, Python, and Java code. Detects vulnerabilities like XSS, SQL injection, and weak cryptography with high accuracy.",
+  "version": "0.2.1",
   "publisher": "vulnzap",
   "icon": "icon.png",
   "repository": {
@@ -57,12 +57,17 @@
       },
       {
         "command": "vulnzap.selectApiProvider",
-        "title": "Select AI Provider",
+        "title": "Configure VulnZap API",
         "category": "Security"
       },
       {
         "command": "vulnzap.configureApiKeys",
-        "title": "Configure API Keys",
+        "title": "Configure VulnZap API",
+        "category": "Security"
+      },
+      {
+        "command": "vulnzap.toggleASTPrecision",
+        "title": "Toggle AST-Guided Precision Analysis",
         "category": "Security"
       },
       {
@@ -113,6 +118,48 @@
         "title": "Find Similar Code Patterns",
         "category": "Security",
         "icon": "$(search)"
+      },
+      {
+        "command": "vulnzap.scanDependencies",
+        "title": "Scan Dependencies for Vulnerabilities",
+        "category": "Security",
+        "icon": "$(package)"
+      },
+      {
+        "command": "vulnzap.forceDependencyScan",
+        "title": "Force Dependency Scan (Ignore Cache)",
+        "category": "Security",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "vulnzap.dependencyCacheStats",
+        "title": "View Dependency Cache Statistics",
+        "category": "Security",
+        "icon": "$(info)"
+      },
+      {
+        "command": "vulnzap.cleanDependencyCache",
+        "title": "Clean Dependency Cache",
+        "category": "Security",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "vulnzap.updateDependencyToVersion",
+        "title": "Update Dependency to Specific Version",
+        "category": "Security",
+        "icon": "$(arrow-up)"
+      },
+      {
+        "command": "vulnzap.showUpdateCommand",
+        "title": "Show Update Command",
+        "category": "Security",
+        "icon": "$(terminal)"
+      },
+      {
+        "command": "vulnzap.fixAllDependencies",
+        "title": "Fix All Dependencies",
+        "category": "Security",
+        "icon": "$(tools)"
       }
     ],
     "viewsContainers": {
@@ -186,6 +233,34 @@
         {
           "command": "vulnzap.findSimilarCode",
           "when": "editorHasSelection"
+        },
+        {
+          "command": "vulnzap.scanDependencies",
+          "when": "true"
+        },
+        {
+          "command": "vulnzap.forceDependencyScan",
+          "when": "true"
+        },
+        {
+          "command": "vulnzap.dependencyCacheStats",
+          "when": "true"
+        },
+        {
+          "command": "vulnzap.cleanDependencyCache",
+          "when": "true"
+        },
+        {
+          "command": "vulnzap.updateDependencyToVersion",
+          "when": "true"
+        },
+        {
+          "command": "vulnzap.showUpdateCommand",
+          "when": "true"
+        },
+        {
+          "command": "vulnzap.fixAllDependencies",
+          "when": "true"
         }
       ],
       "view/title": [
@@ -213,6 +288,16 @@
           "command": "vulnzap.indexStats",
           "when": "view == vulnzap.securityView",
           "group": "index"
+        },
+        {
+          "command": "vulnzap.scanDependencies",
+          "when": "view == vulnzap.securityView",
+          "group": "dependencies"
+        },
+        {
+          "command": "vulnzap.dependencyCacheStats",
+          "when": "view == vulnzap.securityView",
+          "group": "dependencies"
         }
       ],
       "view/item/context": [
@@ -229,12 +314,12 @@
         "vulnzap.enabled": {
           "type": "boolean",
           "default": true,
-          "description": "Enable/disable real-time security scanning"
+          "description": "Enable/disable on-save security scanning"
         },
         "vulnzap.scanDelay": {
           "type": "number",
           "default": 1000,
-          "description": "Delay in milliseconds before scanning after code changes"
+          "description": "Delay in milliseconds for debouncing scans (currently unused as scans run immediately on save)"
         },
         "vulnzap.enableFastScan": {
           "type": "boolean",
@@ -251,62 +336,6 @@
           "default": "warning",
           "description": "Default severity level for security issues"
         },
-        "vulnzap.apiProvider": {
-          "type": "string",
-          "enum": [
-            "openai",
-            "gemini",
-            "openrouter",
-            "vulnzap"
-          ],
-          "enumDescriptions": [
-            "OpenAI GPT models (GPT-3.5, GPT-4)",
-            "Google Gemini AI models",
-            "OpenRouter (access to various AI models)",
-            "VulnZap Custom API (specialized security analysis)"
-          ],
-          "default": "gemini",
-          "description": "Choose your preferred AI provider for security analysis"
-        },
-        "vulnzap.openaiApiKey": {
-          "type": "string",
-          "default": "",
-          "description": "OpenAI API key for GPT-powered security analysis"
-        },
-        "vulnzap.openaiModel": {
-          "type": "string",
-          "enum": [
-            "gpt-3.5-turbo",
-            "gpt-4",
-            "gpt-4-turbo"
-          ],
-          "default": "gpt-4",
-          "description": "OpenAI model to use for analysis"
-        },
-        "vulnzap.geminiApiKey": {
-          "type": "string",
-          "default": "",
-          "description": "Google Gemini API key for AI-powered security analysis"
-        },
-        "vulnzap.openrouterApiKey": {
-          "type": "string",
-          "default": "",
-          "description": "OpenRouter API key for accessing various AI models"
-        },
-        "vulnzap.openrouterModel": {
-          "type": "string",
-          "enum": [
-            "anthropic/claude-3-haiku",
-            "anthropic/claude-3-sonnet",
-            "anthropic/claude-3-opus",
-            "openai/gpt-3.5-turbo",
-            "openai/gpt-4",
-            "meta-llama/llama-2-70b-chat",
-            "mistralai/mixtral-8x7b-instruct"
-          ],
-          "default": "anthropic/claude-3-haiku",
-          "description": "OpenRouter model to use for analysis"
-        },
         "vulnzap.vulnzapApiKey": {
           "type": "string",
           "default": "",
@@ -321,6 +350,11 @@
           "type": "boolean",
           "default": true,
           "description": "Enable AI-powered security analysis (requires API keys)"
+        },
+        "vulnzap.enableASTPrecision": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable AST-guided precision analysis for exact vulnerability positioning (JavaScript/TypeScript only)"
         },
         "vulnzap.confidenceThreshold": {
           "type": "number",
@@ -358,7 +392,7 @@
           "type": "number",
           "default": 0.7,
           "minimum": 0.5,
-          "maximum": 1.0,
+          "maximum": 1,
           "description": "Similarity threshold (0.5-1.0) for vector-based code pattern matching"
         },
         "vulnzap.indexChunkSize": {
@@ -367,6 +401,37 @@
           "minimum": 100,
           "maximum": 2000,
           "description": "Number of lines per code chunk for vector indexing"
+        },
+        "vulnzap.enableDependencyScanning": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable automatic dependency vulnerability scanning when dependency files are saved"
+        },
+        "vulnzap.dependencyScanTimeout": {
+          "type": "number",
+          "default": 60000,
+          "minimum": 10000,
+          "maximum": 300000,
+          "description": "Timeout in milliseconds for dependency vulnerability scans"
+        },
+        "vulnzap.dependencyCacheExpiry": {
+          "type": "number",
+          "default": 5,
+          "minimum": 1,
+          "maximum": 30,
+          "description": "Number of days to cache dependency scan results before rescanning"
+        },
+        "vulnzap.dependencyScanOnStartup": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically scan dependencies when workspace is opened"
+        },
+        "vulnzap.dependencyScanDebounce": {
+          "type": "number",
+          "default": 5000,
+          "minimum": 1000,
+          "maximum": 30000,
+          "description": "Debounce time in milliseconds to prevent rapid dependency scans"
         }
       }
     }
@@ -380,6 +445,7 @@
     "watch-tests": "tsc -p . -w --outDir out"
   },
   "devDependencies": {
+    "@types/babel__traverse": "^7.20.7",
     "@types/node": "^16.18.126",
     "@types/vscode": "^1.74.0",
     "@vscode/test-electron": "^2.5.2",
@@ -389,7 +455,9 @@
     "webpack-cli": "^6.0.1"
   },
   "dependencies": {
-    "@google/genai": "^1.6.0",
+    "@babel/parser": "^7.27.7",
+    "@babel/traverse": "^7.27.7",
+    "@babel/types": "^7.27.7",
     "axios": "^1.6.0",
     "typescript": "^4.9.5"
   },

@@ -33,12 +33,20 @@ A powerful Visual Studio Code extension that provides **real-time, AI-powered se
 - **And more**: Expanding language support based on community needs
 
 ### 🔄 Smart Analysis Features
-- **Real-time Scanning**: Analysis as you type with configurable delays
+- **On-Save Scanning**: Analysis triggers when you save files for optimal performance
 - **Confidence Scoring**: Each finding includes accuracy confidence (0-100%)
 - **Context-Aware Detection**: Understands code patterns beyond simple regex
 - **CVE Integration**: Links findings to known vulnerabilities when applicable
 - **Smart Caching**: Reduces API calls while maintaining accuracy
 - **Performance Optimization**: Handles large files efficiently
+
+### 📦 Dependency Vulnerability Scanning
+- **Multi-Ecosystem Support**: npm, pip, go, rust, gradle, maven, composer, rubygems, and more
+- **Automatic Detection**: Scans package.json, requirements.txt, go.mod, Cargo.toml, pom.xml, etc.
+- **Real-time Monitoring**: Automatically scans when dependency files are saved
+- **Intelligent Caching**: 5-day cache with dependency change detection
+- **Batch API Integration**: Efficient vulnerability database queries
+- **Detailed Reports**: Comprehensive markdown reports with CVE information, severity levels, and fix recommendations
 
 ### 📊 Enhanced Vulnerability Research
 - **Google Search Integration**: Automatic CVE and vulnerability research
@@ -105,7 +113,7 @@ For vulnerability research and CVE detection:
 ## 🎯 Usage
 
 ### Automatic Scanning
-VulnZap automatically scans your code as you type. Security issues appear as:
+VulnZap automatically scans your code when you save files. Security issues appear as:
 - 🔴 **Red squiggles**: Critical vulnerabilities (high confidence)
 - 🟡 **Yellow squiggles**: Security warnings (medium confidence)  
 - 🔵 **Blue squiggles**: Security recommendations (informational)
@@ -114,10 +122,14 @@ VulnZap automatically scans your code as you type. Security issues appear as:
 | Command | Shortcut | Description |
 |---------|----------|-------------|
 | Security: Scan Current File | `Ctrl+Shift+S` | Force scan the active file |
-| Security: Enable Security Review | - | Enable real-time scanning |
+| Security: Enable Security Review | - | Enable on-save scanning |
 | Security: Disable Security Review | - | Disable all scanning |
 | Security: Select AI Provider | - | Choose your AI provider |
 | Security: Configure API Keys | - | Set up API credentials |
+| Security: Scan Dependencies for Vulnerabilities | - | Scan all dependencies in workspace |
+| Security: Force Dependency Scan (Ignore Cache) | - | Fresh dependency scan ignoring cache |
+| Security: View Dependency Cache Statistics | - | Show cache status and statistics |
+| Security: Clean Dependency Cache | - | Remove expired cache entries |
 
 ### Status Bar Integration
 The status bar shows current state:
@@ -153,6 +165,17 @@ Open VS Code settings (`Ctrl+,`) and search for "VulnZap":
 {
   "vulnzap.scanDelay": 1000,
   "vulnzap.confidenceThreshold": 80
+}
+```
+
+### Dependency Scanning Settings
+```json
+{
+  "vulnzap.enableDependencyScanning": true,
+  "vulnzap.dependencyScanOnStartup": true,
+  "vulnzap.dependencyCacheExpiry": 5,
+  "vulnzap.dependencyScanTimeout": 60000,
+  "vulnzap.dependencyScanDebounce": 5000
 }
 ```
 
@@ -196,6 +219,31 @@ const apiKey = "sk-1234567890abcdef";
 
 // ✅ Suggested: Use environment variables
 const apiKey = process.env.API_KEY;
+```
+
+### Dependency Vulnerabilities
+```json
+// package.json - Vulnerable package detected
+{
+  "dependencies": {
+    "express": "4.16.0" // ❌ CVE-2024-29041: Path traversal vulnerability
+  }
+}
+
+// ✅ Recommendation: Update to express@4.19.2 or later
+{
+  "dependencies": {
+    "express": "^4.19.2"
+  }
+}
+```
+
+```python
+# requirements.txt - Vulnerable Python package
+django==2.2.0  # ❌ CVE-2023-31047: SQL injection vulnerability
+
+# ✅ Recommendation: Update to Django 3.2.20 or later
+django>=3.2.20
 ```
 
 ## 🛠️ Development & Contributing

@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
-import { SecurityIssue } from "./securityAnalyzer";
+import { SecurityIssue } from "../security/securityAnalyzer";
 import { APIProviderManager } from "./apiProviders";
+import { VulnerabilityInfo, DependencyScanResult } from "../dependencies/dependencyCache";
 
 export interface SecurityTreeItem {
   label: string;
@@ -17,6 +18,8 @@ export interface SecurityTreeItem {
   resourceUri?: vscode.Uri;
   issue?: SecurityIssue;
   severity?: vscode.DiagnosticSeverity;
+  vulnerability?: VulnerabilityInfo;
+  dependencyScanResult?: DependencyScanResult;
 }
 
 export class SecurityViewProvider
@@ -30,6 +33,7 @@ export class SecurityViewProvider
   > = this._onDidChangeTreeData.event;
 
   private securityIssues: Map<string, SecurityIssue[]> = new Map();
+  private dependencyVulnerabilities: Map<string, DependencyScanResult> = new Map();
   private scanResults: Map<
     string,
     { timestamp: Date; issueCount: number; isEnabled: boolean }
@@ -76,6 +80,9 @@ export class SecurityViewProvider
         (issue) => issue.severity === element.severity
       );
       return Promise.resolve(this.getIssueItemsGrouped(filteredIssues));
+    } else if (element.contextValue === "dependencySeverityGroup") {
+      // Return vulnerabilities for this severity group
+      return Promise.resolve(element.children || []);
     }
     return Promise.resolve([]);
   }
@@ -88,6 +95,11 @@ export class SecurityViewProvider
 
     // Statistics Section
     items.push(this.getStatisticsSection());
+
+    // Dependency Vulnerabilities Section
+    if (this.hasDependencyVulnerabilities()) {
+      items.push(this.getDependencyVulnerabilitiesSection());
+    }
 
     // Issues by Severity Section
     if (this.hasAnyIssues()) {
@@ -108,9 +120,8 @@ export class SecurityViewProvider
   private getConfigurationSection(): SecurityTreeItem {
     const config = vscode.workspace.getConfiguration("vulnzap");
     const isEnabled = config.get<boolean>("enabled", true);
-    const apiProvider = config.get<string>("apiProvider", "gemini");
-    const provider = this.apiProviderManager.getProvider(apiProvider);
-    const isConfigured = provider?.isConfigured() || false;
+    const provider = this.apiProviderManager.getCurrentProvider();
+    const isConfigured = provider.isConfigured();
 
     // Check for session in global state
     const session = this.context.globalState.get("vulnzapSession");
@@ -143,26 +154,17 @@ export class SecurityViewProvider
         },
       },
       {
-        label: `AI Provider: ${provider?.displayName || "Unknown"}`,
+        label: `VulnZap API: ${isConfigured ? "Configured" : "Not Configured"}`,
         description: isConfigured
-          ? "\u2713 Configured"
-          : "\u26a0 Not configured",
+          ? "\u2713 Ready"
+          : "\u26a0 Configure API",
         iconPath: isConfigured
           ? new vscode.ThemeIcon("check")
           : new vscode.ThemeIcon("warning"),
         contextValue: "provider",
         command: {
-          command: "vulnzap.selectApiProvider",
-          title: "Select AI Provider",
-        },
-      },
-      {
-        label: "Configure API Keys",
-        iconPath: new vscode.ThemeIcon("key"),
-        contextValue: "configure",
-        command: {
           command: "vulnzap.configureApiKeys",
-          title: "Configure API Keys",
+          title: "Configure VulnZap API",
         },
       }
     );
@@ -507,6 +509,105 @@ export class SecurityViewProvider
   clearAllSecurityIssues(): void {
     this.securityIssues.clear();
     this.scanResults.clear();
+    this.refresh();
+  }
+
+  // Dependency vulnerability methods
+  private hasDependencyVulnerabilities(): boolean {
+    return this.dependencyVulnerabilities.size > 0;
+  }
+
+  private getDependencyVulnerabilitiesSection(): SecurityTreeItem {
+    const allVulns = Array.from(this.dependencyVulnerabilities.values());
+    const totalVulns = allVulns.reduce((sum, result) => sum + result.vulnerabilities.length, 0);
+    const criticalCount = allVulns.reduce((sum, result) => 
+      sum + result.vulnerabilities.filter(v => v.severity === 'critical').length, 0);
+    const highCount = allVulns.reduce((sum, result) => 
+      sum + result.vulnerabilities.filter(v => v.severity === 'high').length, 0);
+
+    const children: SecurityTreeItem[] = [];
+
+    // Summary item
+    children.push({
+      label: `Total Vulnerabilities: ${totalVulns}`,
+      description: `${criticalCount} critical, ${highCount} high`,
+      iconPath: new vscode.ThemeIcon("package"),
+      contextValue: "dependencySummary",
+    });
+
+    // Fix All button
+    if (totalVulns > 0) {
+      children.push({
+        label: "Fix All Dependencies",
+        description: "Update all to latest versions",
+        iconPath: new vscode.ThemeIcon("tools"),
+        contextValue: "fixAllDependencies",
+        command: {
+          command: "vulnzap.fixAllDependencies",
+          title: "Fix All Dependencies",
+        },
+      });
+    }
+
+    // List vulnerabilities by severity
+    const vulnsBySeverity = new Map<string, VulnerabilityInfo[]>();
+    for (const result of allVulns) {
+      for (const vuln of result.vulnerabilities) {
+        if (!vulnsBySeverity.has(vuln.severity)) {
+          vulnsBySeverity.set(vuln.severity, []);
+        }
+        vulnsBySeverity.get(vuln.severity)!.push(vuln);
+      }
+    }
+
+    // Add severity groups (only critical and high for inline display)
+    for (const [severity, vulns] of vulnsBySeverity) {
+      if (severity === 'critical' || severity === 'high') {
+        children.push({
+          label: `${severity.charAt(0).toUpperCase() + severity.slice(1)} (${vulns.length})`,
+          iconPath: severity === 'critical' 
+            ? new vscode.ThemeIcon("error") 
+            : new vscode.ThemeIcon("warning"),
+          collapsibleState: vscode.TreeItemCollapsibleState.Collapsed,
+          contextValue: "dependencySeverityGroup",
+          children: vulns.map(vuln => ({
+            label: `${vuln.packageName}@${vuln.packageVersion}`,
+            description: vuln.fixedIn ? `Fix: ${vuln.fixedIn}` : "Update needed",
+            tooltip: `${vuln.description}\n\nRecommendation: ${vuln.recommendation}${vuln.cveId ? `\nCVE: ${vuln.cveId}` : ''}`,
+            iconPath: new vscode.ThemeIcon("bug"),
+            contextValue: "dependencyVulnerability",
+            vulnerability: vuln,
+            command: vuln.fixedIn ? {
+              command: "vulnzap.updateDependencyToVersion",
+              title: `Update to ${vuln.fixedIn}`,
+              arguments: [vuln.packageName, vuln.fixedIn]
+            } : {
+              command: "vulnzap.showUpdateCommand",
+              title: `Show update command for ${vuln.packageName}`,
+              arguments: [vuln.packageName]
+            }
+          }))
+        });
+      }
+    }
+
+    return {
+      label: "Dependency Vulnerabilities",
+      description: totalVulns > 0 ? `${totalVulns} found` : undefined,
+      iconPath: new vscode.ThemeIcon("package"),
+      collapsibleState: vscode.TreeItemCollapsibleState.Expanded,
+      contextValue: "dependencySection",
+      children: children,
+    };
+  }
+
+  updateDependencyVulnerabilities(scanResult: DependencyScanResult): void {
+    this.dependencyVulnerabilities.set(scanResult.projectHash, scanResult);
+    this.refresh();
+  }
+
+  clearDependencyVulnerabilities(): void {
+    this.dependencyVulnerabilities.clear();
     this.refresh();
   }
 }
