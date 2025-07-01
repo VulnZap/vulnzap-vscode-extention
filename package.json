@@ -160,6 +160,12 @@
         "title": "Fix All Dependencies",
         "category": "Security",
         "icon": "$(tools)"
+      },
+      {
+        "command": "vulnzap.showOutputChannel",
+        "title": "Show VulnZap Output Logs",
+        "category": "Security",
+        "icon": "$(output)"
       }
     ],
     "viewsContainers": {
@@ -261,6 +267,10 @@
         {
           "command": "vulnzap.fixAllDependencies",
           "when": "true"
+        },
+        {
+          "command": "vulnzap.showOutputChannel",
+          "when": "true"
         }
       ],
       "view/title": [
@@ -309,6 +319,7 @@
       ]
     },
     "configuration": {
+      "type": "object",
       "title": "VulnZap Security Scanner",
       "properties": {
         "vulnzap.enabled": {
@@ -432,6 +443,26 @@
           "minimum": 1000,
           "maximum": 30000,
           "description": "Debounce time in milliseconds to prevent rapid dependency scans"
+        },
+        "vulnzap.enableDebugLogging": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable detailed debug logging for troubleshooting (visible in VulnZap output channel)"
+        },
+        "vulnzap.maxFileSizeBytes": {
+          "type": "number",
+          "default": 1000000,
+          "description": "Maximum file size (in bytes) to scan. Files larger than this will be skipped. Default: 1,000,000 (1MB)"
+        },
+        "vulnzap.maxFileLines": {
+          "type": "number",
+          "default": 2000,
+          "description": "Maximum number of lines in a file to scan. Files with more lines will be skipped. Default: 2000"
+        },
+        "vulnzap.maxIssuesPerFile": {
+          "type": "number",
+          "default": 100,
+          "description": "Maximum number of issues to report per file. Scanning stops after this many issues are found. Default: 100"
         }
       }
     }

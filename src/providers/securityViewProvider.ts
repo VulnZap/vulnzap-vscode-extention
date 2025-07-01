@@ -1,5 +1,20 @@
 import * as vscode from "vscode";
-import { SecurityIssue } from "../security/securityAnalyzer";
+// Simple interface for compatibility with diagnostic provider
+interface SecurityIssue {
+  line: number;
+  column: number;
+  endLine: number;
+  endColumn: number;
+  message: string;
+  severity: any;
+  code: string;
+  suggestion?: string;
+  confidence?: number;
+  cve?: string[];
+  searchResults?: string[];
+  relatedCode?: any[];
+  similarVulnerabilities?: any[];
+}
 import { APIProviderManager } from "./apiProviders";
 import { VulnerabilityInfo, DependencyScanResult } from "../dependencies/dependencyCache";
 

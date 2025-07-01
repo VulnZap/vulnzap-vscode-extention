@@ -1,28 +1,35 @@
 import * as vscode from "vscode";
-import { SecurityAnalyzer } from "../security/securityAnalyzer";
+
 import { DiagnosticProvider } from "../providers/diagnosticProvider";
 import { DependencyDiagnosticProvider } from "../providers/dependencyDiagnosticProvider";
 import { APIProviderManager } from "../providers/apiProviders";
 import { SecurityViewProvider } from "../providers/securityViewProvider";
-import { VectorIndexer } from '../security/vectorIndexer';
+import { CodebaseIndexer } from '../indexing/codebaseIndexer';
+import { CodebaseSecurityAnalyzer } from '../security/codebaseSecurityAnalyzer';
 import { DependencyScanner } from '../dependencies/dependencyScanner';
+import { Logger } from '../utils/logger';
 
 /**
  * Main extension activation function
  * Initializes all components and registers commands, listeners, and providers
  */
-export function activate(context: vscode.ExtensionContext) {
+export async function activate(context: vscode.ExtensionContext) {
   try {
+    // Initialize logger first for proper output channel logging
+    Logger.initialize();
+    Logger.info('VulnZap extension is activating...');
+
     // Initialize core security analysis components
-    const vectorIndexer = new VectorIndexer(context);
-    const securityAnalyzer = new SecurityAnalyzer();
+    const codebaseIndexer = new CodebaseIndexer(context);
+    const codebaseSecurityAnalyzer = new CodebaseSecurityAnalyzer(codebaseIndexer);
+
     const diagnosticProvider = new DiagnosticProvider(context);
     const dependencyDiagnosticProvider = new DependencyDiagnosticProvider(context);
     const securityViewProvider = new SecurityViewProvider(context);
     const dependencyScanner = new DependencyScanner(context);
         
-    // Establish connections between components for enhanced analysis
-    securityAnalyzer.setVectorIndexer(vectorIndexer);
+    // Initialize the new indexing system
+    await codebaseIndexer.initialize();
 
     // Register the security issues tree view in the sidebar
     vscode.window.registerTreeDataProvider(
@@ -71,13 +78,27 @@ export function activate(context: vscode.ExtensionContext) {
           .getConfiguration("vulnzap")
           .get("enableFastScan", true);
 
-        // Provide immediate feedback with basic pattern matching
+        // Provide immediate feedback with the new codebase analyzer
         if (enableFastScan) {
-          const basicIssues = await securityAnalyzer.fallbackToBasicAnalysis(
-            document
+          const quickResponse = await codebaseSecurityAnalyzer.analyzeCode(
+            document.getText().substring(0, 2000), // Quick scan of first 2000 chars
+            document.uri.fsPath,
+            document.languageId.toString(),
+            0
           );
-          if (basicIssues.length > 0) {
-            diagnosticProvider.updateDiagnostics(document, basicIssues);
+          if (quickResponse.issues.length > 0) {
+            const quickIssues = quickResponse.issues.map(issue => ({
+              line: issue.startLine - 1,
+              column: issue.startColumn,
+              endLine: issue.endLine - 1,
+              endColumn: issue.endColumn,
+              message: issue.message,
+                             severity: codebaseSecurityAnalyzer.convertToVSCodeSeverity(issue.severity),
+              code: issue.type,
+              suggestion: issue.suggestion,
+              confidence: issue.confidence
+            }));
+            diagnosticProvider.updateDiagnostics(document, quickIssues);
             updateStatusBar("quick-scan");
           }
         }
@@ -99,13 +120,13 @@ export function activate(context: vscode.ExtensionContext) {
       });
 
     // Register all extension commands
-    console.log("VulnZap: Registering commands...");
+    Logger.info("Registering commands...");
 
     // Command: Enable security scanning
     const enableCommand = vscode.commands.registerCommand(
       "vulnzap.enable",
       () => {
-        console.log("VulnZap: Enable command called");
+        Logger.info("Enable command called");
         isEnabled = true;
         vscode.workspace
           .getConfiguration("vulnzap")
@@ -125,7 +146,7 @@ export function activate(context: vscode.ExtensionContext) {
     const disableCommand = vscode.commands.registerCommand(
       "vulnzap.disable",
       () => {
-        console.log("VulnZap: Disable command called");
+        Logger.info("Disable command called");
         isEnabled = false;
         vscode.workspace
           .getConfiguration("vulnzap")
@@ -419,24 +440,26 @@ export function activate(context: vscode.ExtensionContext) {
       console.log('VulnZap: Build index command called');
       
       try {
-        await vectorIndexer.initializeIndex();
+        await codebaseIndexer.buildIndex();
       } catch (error) {
         console.error('Error building index:', error);
         vscode.window.showErrorMessage('Error building security index: ' + (error as Error).message);
       }
     });
 
-    const indexStatsCommand = vscode.commands.registerCommand('vulnzap.indexStats', () => {
+    const indexStatsCommand = vscode.commands.registerCommand('vulnzap.indexStats', async () => {
       console.log('VulnZap: Index stats command called');
       
-      const stats = vectorIndexer.getIndexStats();
+      const stats = await codebaseIndexer.getIndexStats();
       
       vscode.window.showInformationMessage(
         `Index Stats:\n` +
         `• Total Chunks: ${stats.totalChunks}\n` +
         `• Total Files: ${stats.totalFiles}\n` +
-        `• Index Size: ${stats.indexSize}\n` +
-        `• Last Full Index: ${stats.lastFullIndex ? stats.lastFullIndex.toLocaleString() : 'Never'}`
+        `• Average Chunk Size: ${stats.avgChunkSize}\n` +
+        `• Security Relevant: ${stats.securityRelevantChunks}\n` +
+        `• Last Indexed: ${stats.lastIndexed ? stats.lastIndexed.toLocaleString() : 'Never'}\n` +
+        `• Pending Updates: ${stats.pendingUpdates}`
       );
     });
 
@@ -451,7 +474,7 @@ export function activate(context: vscode.ExtensionContext) {
 
       if (choice === 'Clear Index') {
         try {
-          await vectorIndexer.clearIndex();
+          await codebaseIndexer.clearIndex();
           vscode.window.showInformationMessage('Security index cleared successfully');
         } catch (error) {
           console.error('Error clearing index:', error);
@@ -478,9 +501,9 @@ export function activate(context: vscode.ExtensionContext) {
       }
 
       try {
-        const results = await vectorIndexer.findSimilarCode(selectedText, {
-          maxResults: 10,
-          similarityThreshold: 0.6
+        const results = await codebaseIndexer.findSimilarCode(selectedText, {
+          max_results: 10,
+          similarity_threshold: 0.6
         });
 
         if (results.length === 0) {
@@ -489,14 +512,14 @@ export function activate(context: vscode.ExtensionContext) {
         }
 
         // Create a new document to show results
-        const resultContent = results.map((result, index) => {
-          return `## Result ${index + 1} (Similarity: ${(result.similarity * 100).toFixed(1)}%)\n` +
-                 `**File:** ${result.chunk.filePath}\n` +
-                 `**Lines:** ${result.chunk.startLine}-${result.chunk.endLine}\n` +
-                 `**Security Relevance:** ${result.chunk.securityRelevance}\n` +
-                 `**Type:** ${result.chunk.semanticType}\n\n` +
+        const resultContent = results.map((result: any, index: number) => {
+          return `## Result ${index + 1}\n` +
+                 `**File:** ${result.filePath}\n` +
+                 `**Lines:** ${result.startLine}-${result.endLine}\n` +
+                 `**Security Keywords:** ${result.metadata.hasSecurityKeywords ? 'Yes' : 'No'}\n` +
+                 `**Language:** ${result.language}\n\n` +
                  '```\n' +
-                 result.chunk.content.substring(0, 500) + (result.chunk.content.length > 500 ? '...' : '') +
+                 result.content.substring(0, 500) + (result.content.length > 500 ? '...' : '') +
                  '\n```\n\n';
         }).join('---\n\n');
 
@@ -728,6 +751,15 @@ export function activate(context: vscode.ExtensionContext) {
       }
     });
 
+    // Command: Show output channel
+    const showOutputChannelCommand = vscode.commands.registerCommand(
+      'vulnzap.showOutputChannel',
+      () => {
+        Logger.info('Show output channel command called');
+        Logger.show();
+      }
+    );
+
     console.log("VulnZap: All commands registered successfully");
 
     // Configuration change listener
@@ -743,6 +775,12 @@ export function activate(context: vscode.ExtensionContext) {
             diagnosticProvider.clearAll();
           }
         }
+        
+        if (event.affectsConfiguration('vulnzap.enableDebugLogging')) {
+          const config = vscode.workspace.getConfiguration('vulnzap');
+          const debugEnabled = config.get('enableDebugLogging', false);
+          Logger.setDebugMode(debugEnabled);
+        }
       }
     );
 
@@ -751,16 +789,41 @@ export function activate(context: vscode.ExtensionContext) {
       forceShow: boolean = false
     ) {
       try {
-        console.log('=== VULNZAP SCAN STARTING ===');
-        console.log('Document:', document.uri.fsPath);
-        vscode.window.showInformationMessage('🔍 VulnZap: Starting security scan...');
-        
-        updateStatusBar("scanning");
-        const issues = await securityAnalyzer.analyzeDocument(document);
-        
-        console.log('=== SCAN COMPLETED ===');
-        console.log('Found issues:', issues.length);
-        
+        const config = vscode.workspace.getConfiguration('vulnzap');
+        const maxFileSize = config.get<number>('maxFileSizeBytes', 1000000);
+        const maxFileLines = config.get<number>('maxFileLines', 2000);
+        const maxIssues = config.get<number>('maxIssuesPerFile', 100);
+        const fileSize = Buffer.byteLength(document.getText(), 'utf8');
+        const lineCount = document.lineCount;
+
+        if (fileSize > maxFileSize || lineCount > maxFileLines) {
+          vscode.window.showWarningMessage(
+            `VulnZap: File too large to scan (>${maxFileSize} bytes or >${maxFileLines} lines). Skipping scan.`
+          );
+          Logger.warn(`Skipping scan for large file: ${document.uri.fsPath} (${fileSize} bytes, ${lineCount} lines)`);
+          updateStatusBar();
+          return;
+        }
+
+        Logger.info('=== VULNZAP SCAN STARTING ===');
+        Logger.info('Document:', document.uri.fsPath);
+        if (fileSize > 0.5 * maxFileSize || lineCount > 0.5 * maxFileLines) {
+          updateStatusBar('scanning');
+          vscode.window.setStatusBarMessage('$(loading~spin) VulnZap: Scanning large file...', 3000);
+        } else {
+          updateStatusBar('scanning');
+        }
+
+        let issues = await codebaseSecurityAnalyzer.analyzeDocument(document);
+        if (issues.length > maxIssues) {
+          issues = issues.slice(0, maxIssues);
+          vscode.window.showInformationMessage(
+            `VulnZap: Too many issues found in this file. Only the first ${maxIssues} are shown.`
+          );
+        }
+
+        Logger.info('=== SCAN COMPLETED ===');
+        Logger.info('Found issues:', issues.length);
         diagnosticProvider.updateDiagnostics(document, issues);
         securityViewProvider.updateSecurityIssues(document, issues);
         updateStatusBar(); // Reset to normal status
@@ -770,9 +833,6 @@ export function activate(context: vscode.ExtensionContext) {
           const issueDetails = issues.map(issue => 
             `Line ${issue.line + 1}: ${issue.message.substring(0, 50)}...`
           ).join('; ');
-          vscode.window.showInformationMessage(
-            `🔍 VulnZap: Found ${issues.length} issue${issues.length === 1 ? '' : 's'}. ${issueDetails}`
-          );
         } else {
           vscode.window.showInformationMessage('✅ VulnZap: No security issues found');
         }
@@ -785,7 +845,7 @@ export function activate(context: vscode.ExtensionContext) {
           );
         }
       } catch (error) {
-        console.error("=== SCAN ERROR ===", error);
+        Logger.error("=== SCAN ERROR ===", error as Error);
         updateStatusBar(); // Reset to normal status
         if (forceShow) {
           vscode.window.showErrorMessage("Error during security scan");
@@ -807,23 +867,19 @@ export function activate(context: vscode.ExtensionContext) {
 
     function updateStatusBar(status: string = "") {
       if (isEnabled) {
-        const config = vscode.workspace.getConfiguration("vulnzap");
-        const astEnabled = config.get("enableASTPrecision", true);
-        const precision = astEnabled ? "AST" : "Standard";
-        
         if (status === "quick-scan") {
           statusBarItem.text = "$(shield) Security: Quick Scan";
           statusBarItem.tooltip =
-            "Quick security scan completed. Full AI analysis in progress...";
+            "Quick security scan completed. Full analysis in progress...";
           statusBarItem.backgroundColor = undefined;
         } else if (status === "scanning") {
           statusBarItem.text = "$(loading~spin) Security: Scanning...";
-          statusBarItem.tooltip = `${precision} security analysis in progress...`;
+          statusBarItem.tooltip = "Text-based security analysis in progress...";
           statusBarItem.backgroundColor = undefined;
         } else {
-          statusBarItem.text = `$(shield) Security: ON (${precision})`;
+          statusBarItem.text = "$(shield) Security: ON";
           statusBarItem.tooltip =
-            `Security review is enabled with ${precision.toLowerCase()} precision. Click to disable.`;
+            "Security review is enabled with text-based analysis. Click to disable.";
           statusBarItem.backgroundColor = undefined;
         }
       } else {
@@ -862,6 +918,7 @@ export function activate(context: vscode.ExtensionContext) {
       updateDependencyToVersionCommand,
       showUpdateCommandCmd,
       fixAllDependenciesCommand,
+      showOutputChannelCommand,
       configChangeListener,
       diagnosticProvider
     );
@@ -873,7 +930,10 @@ export function activate(context: vscode.ExtensionContext) {
       activeEditor &&
       isSupportedLanguage(activeEditor.document.languageId)
     ) {
+      Logger.debug('Active editor found, performing initial scan');
       scanDocument(activeEditor.document);
+    } else {
+      Logger.debug('No active editor or unsupported language, skipping initial scan');
     }
 
     // Initial dependency scan on startup (if enabled)
@@ -881,10 +941,10 @@ export function activate(context: vscode.ExtensionContext) {
     if (dependencyScanOnStartup) {
       setTimeout(async () => {
         try {
-          console.log('VulnZap: Performing initial dependency scan...');
+          Logger.info('Performing initial dependency scan...');
           await dependencyScanner.scanWorkspaceDependencies();
         } catch (error) {
-          console.error('Error during initial dependency scan:', error);
+          Logger.error('Error during initial dependency scan:', error as Error);
         }
       }, 2000); // Wait 2 seconds after activation to avoid blocking startup
     }
@@ -893,7 +953,7 @@ export function activate(context: vscode.ExtensionContext) {
     const providerManager = new APIProviderManager(context);
     providerManager.setContext(context);
   } catch (error) {
-    console.error("VulnZap: Error in activate:", error);
+    Logger.error("Error in activate:", error as Error);
     vscode.window.showErrorMessage(
       "Error activating the extension: " + (error as Error).message
     );
@@ -901,7 +961,8 @@ export function activate(context: vscode.ExtensionContext) {
 }
 
 export function deactivate() {
-  console.log("VulnZap deactivated");
+  Logger.info("VulnZap deactivated");
+  Logger.dispose();
 }
 
 async function configureVulnZap(config: vscode.WorkspaceConfiguration) {

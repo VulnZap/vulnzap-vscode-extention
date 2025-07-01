@@ -1,15 +1,16 @@
-// VulnZap Extension Components
-// Core extension functionality
-export * from './core';
+// Main exports for VulnZap extension
 
-// Security analysis components  
+// New indexing system
+export * from './indexing';
+
+// Simplified security analysis
 export * from './security';
 
-// Dependency vulnerability scanning
-export * from './dependencies';
-
-// Provider services
+// Providers
 export * from './providers';
 
-// Utility components
+// Dependencies
+export * from './dependencies';
+
+// Utilities
 export * from './utils'; 

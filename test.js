@@ -52,8 +52,9 @@ function testSQLInjection() {
 // SEC005 - Hardcoded secrets
 function testHardcodedSecrets() {
     const apiKey = "sk_live_51234567890abcdef1234567890abcdef12345678"; // Stripe key
-    const awsKey = "AKIAIOSFODNN7EXAMPLE"; // AWS access key
-    const githubToken = "ghp_1234567890abcdef1234567890abcdef123456"; // GitHub token
+    const githubToken = "ghp_example_token_placeholder"; // GitHub token
+    const awsKey = "AKIAEXAMPLEKEY123456"; // AWS key
+    const paypalSecret = "sandbox_secret_123456"; // PayPal secret
     
     const config = {
         password: "super_secret_password_123", // Generic secret

@@ -3,8 +3,8 @@ import axios from "axios";
 import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
-import { ASTAnalyzerFactory } from "../security/astAnalyzerFactory";
-import { ASTGuidedAnalysisResponse } from "../security/astAnalyzer";
+// AST analysis removed - using text-based approach now
+import { Logger } from "../utils/logger";
 
 /**
  * Standard response format for AI security analysis results
@@ -55,7 +55,7 @@ class LLMLogger {
         fs.mkdirSync(this.logDir, { recursive: true });
       }
     } catch (error) {
-      console.error('Failed to create log directory:', error);
+      Logger.error('Failed to create log directory:', error as Error);
     }
   }
 
@@ -92,7 +92,7 @@ class LLMLogger {
       const logLine = JSON.stringify(logEntry) + '\n';
       fs.appendFileSync(logFilePath, logLine);
     } catch (error) {
-      console.error('Failed to log LLM interaction:', error);
+      Logger.error('Failed to log LLM interaction:', error as Error);
     }
   }
 }
@@ -199,58 +199,62 @@ ${processedCode}
   }
 
   /**
-   * Parses AI responses and extracts JSON from various formats
+   * Parses AI response text and converts to standardized format
    */
   static parseAIResponse(aiText: string): AISecurityResponse {
     try {
-      // Handle responses wrapped in markdown code blocks
-      const jsonMatch = aiText.match(/```(?:json)?\s*(\{[\s\S]*\})\s*```/);
-      const jsonText = jsonMatch ? jsonMatch[1] : aiText;
-
-      const parsed = JSON.parse(jsonText);
-
-      // Validate that required fields are present
-      if (!parsed.issues || !Array.isArray(parsed.issues)) {
-        throw new Error("Invalid response format: missing issues array");
+      // Try to parse as JSON first
+      if (aiText.trim().startsWith('{')) {
+        return JSON.parse(aiText);
       }
 
-      // Don't convert line numbers - keep original values
-      const issues = parsed.issues.map((issue: any) => ({
-        ...issue,
-        line: issue.line, // Keep original line number
-        endLine: issue.endLine, // Keep original endLine number
-      }));
+      // Look for JSON content within markdown code blocks
+      const jsonMatch = aiText.match(/```(?:json)?\s*(\{[\s\S]*\})\s*```/);
+      if (jsonMatch) {
+        return JSON.parse(jsonMatch[1]);
+      }
 
-      return {
-        issues,
-        summary: parsed.summary || "Security analysis completed",
-        overallRisk: parsed.overallRisk || "low",
-      };
-    } catch (error) {
-      console.error("Failed to parse AI response:", error);
-      console.error("Raw response:", aiText);
+      // Try to extract JSON from anywhere in the response
+      const braceStart = aiText.indexOf('{');
+      const braceEnd = aiText.lastIndexOf('}');
+      if (braceStart !== -1 && braceEnd !== -1 && braceEnd > braceStart) {
+        const jsonStr = aiText.substring(braceStart, braceEnd + 1);
+        return JSON.parse(jsonStr);
+      }
+
+      // If no JSON found, return empty response
       return {
         issues: [],
-        summary: "Failed to parse security analysis response",
-        overallRisk: "low",
+        summary: "Could not parse AI response",
+        overallRisk: "low"
+      };
+    } catch (error) {
+      Logger.error('Failed to parse AI response:', error as Error);
+      return {
+        issues: [],
+        summary: "Failed to parse AI response",
+        overallRisk: "low"
       };
     }
   }
 
   /**
-   * Filters out security issues below the specified confidence threshold
+   * Filters out low confidence issues from the response
    */
   static filterLowConfidenceIssues(
     response: AISecurityResponse,
     minConfidence: number = 80
   ): AISecurityResponse {
-    const filteredIssues = response.issues.filter(
-      (issue) => (issue.confidence || 0) >= minConfidence
+    const filteredIssues = response.issues.filter(issue => 
+      (issue.confidence || 0) >= minConfidence
     );
 
     return {
       ...response,
       issues: filteredIssues,
+      summary: filteredIssues.length > 0 
+        ? `Found ${filteredIssues.length} high-confidence security issues`
+        : "No high-confidence security issues found"
     };
   }
 }
@@ -314,14 +318,12 @@ export class VulnZapProvider implements APIProvider {
   }
 
   /**
-   * Analyzes code using the VulnZap API service with AST-guided precision
-   * Handles errors gracefully and provides detailed error messages
+   * Analyzes code for security vulnerabilities using text-based approach
    */
   async analyzeCode(code: string, language: string): Promise<AISecurityResponse> {
     const config = vscode.workspace.getConfiguration("vulnzap");
     const apiKey = config.get("vulnzapApiKey", "").trim();
     const apiUrl = config.get("vulnzapApiUrl", "").trim();
-    const enableASTPrecision = config.get("enableASTPrecision", true);
     
     if (!apiKey || !apiUrl) {
       throw new Error("VulnZap API key and URL are required");
@@ -331,23 +333,16 @@ export class VulnZapProvider implements APIProvider {
     const fastScan = config.get("enableFastScan", true);
 
     try {
-      let analysisResult: AISecurityResponse;
-
-      // Use AST-guided analysis if supported and enabled
-      if (enableASTPrecision && ASTAnalyzerFactory.isSupported(language)) {
-        console.log(`Using AST-guided analysis for ${language}`);
-        analysisResult = await this.performASTGuidedAnalysis(code, language, apiKey, apiUrl, fastScan);
-      } else {
-        console.log(`Using traditional analysis for ${language}`);
-        analysisResult = await this.performTraditionalAnalysis(code, language, apiKey, apiUrl, fastScan);
-      }
+      // Use text-based analysis (AST removed for simplicity and speed)
+      Logger.debug(`Using text-based analysis for ${language}`);
+      const analysisResult = await this.performTextBasedAnalysis(code, language, apiKey, apiUrl, fastScan);
 
       const analysisTime = Date.now() - startTime;
       analysisResult.analysisTime = analysisTime;
       
       return analysisResult;
     } catch (error: any) {
-      console.error("VulnZap API error:", error);
+      Logger.error("VulnZap API error:", error as Error);
       
       // Provide specific error messages based on the type of failure
       if (error.response) {
@@ -374,85 +369,9 @@ export class VulnZapProvider implements APIProvider {
   }
 
   /**
-   * Perform AST-guided analysis for precise vulnerability detection
+   * Perform text-based analysis (fast and simple)
    */
-  private async performASTGuidedAnalysis(
-    code: string, 
-    language: string, 
-    apiKey: string, 
-    apiUrl: string, 
-    fastScan: boolean
-  ): Promise<AISecurityResponse> {
-    console.log('=== AST ANALYSIS DEBUG ===');
-    console.log('Code being sent to API:');
-    console.log('Code length:', code.length);
-    console.log('Code with line numbers:');
-    const lines = code.split('\n');
-    lines.forEach((line, index) => {
-      console.log(`Line ${index + 1} (VS Code line ${index}): "${line}"`);
-    });
-    console.log('Raw code (escaped):', JSON.stringify(code));
-    console.log('========================');
-
-    // Create AST analyzer for the language
-    const astAnalyzer = ASTAnalyzerFactory.createAnalyzer(language);
-    
-    // Parse AST and extract security-relevant nodes
-    const astResult = await astAnalyzer.analyzeCode(code);
-    
-    // Build enhanced prompt with AST guidance
-    const prompt = this.buildASTGuidedPrompt(code, language, astResult, fastScan);
-
-    const response = await axios.post(
-      `${apiUrl}/api/v1/vulnzap/code-scan`,
-      {
-        code,
-        language,
-        prompt,
-        astGuidance: {
-          securityNodes: astResult.astStats.securityRelevantNodes,
-          totalNodes: astResult.astStats.totalNodes,
-          precisionMode: true
-        },
-        options: {
-          fastScan,
-          includeLineNumbers: true,
-          maxLines: 200,
-          astGuided: true
-        }
-      },
-      {
-        headers: {
-          "x-api-key": `${apiKey}`,
-          "Content-Type": "application/json",
-          "User-Agent": "VulnZap-VSCode-Extension-AST"
-        },
-        timeout: 45000 // Longer timeout for AST analysis
-      }
-    );
-
-    // Log the AST-guided interaction
-    await LLMLogger.logLLMInteraction(
-      `${this.name}-ast`,
-      prompt,
-      JSON.stringify(response.data),
-      { 
-        language, 
-        codeLength: code.length, 
-        astStats: astResult.astStats,
-        fastScan,
-        precision: 'ast-guided'
-      }
-    );
-
-    // Convert AST response to standard format
-    return this.convertASTResponseToStandard(response.data, astResult);
-  }
-
-  /**
-   * Perform traditional regex-based analysis (fallback)
-   */
-  private async performTraditionalAnalysis(
+  private async performTextBasedAnalysis(
     code: string, 
     language: string, 
     apiKey: string, 
@@ -476,7 +395,7 @@ export class VulnZapProvider implements APIProvider {
           fastScan,
           includeLineNumbers: true,
           maxLines: 200,
-          astGuided: false
+          textBased: true
         }
       },
       {
@@ -498,7 +417,7 @@ export class VulnZapProvider implements APIProvider {
         language, 
         codeLength: code.length, 
         fastScan,
-        precision: 'traditional'
+        approach: 'text-based'
       }
     );
 
@@ -506,166 +425,54 @@ export class VulnZapProvider implements APIProvider {
   }
 
   /**
-   * Build AST-guided prompt for enhanced precision
-   */
-  private buildASTGuidedPrompt(
-    code: string, 
-    language: string, 
-    astResult: ASTGuidedAnalysisResponse,
-    fastScan: boolean
-  ): string {
-    const scanType = fastScan ? 'Fast AST-guided security scan' : 'Comprehensive AST-guided security analysis';
-    const focusLevel = fastScan ? 'CRITICAL vulnerabilities only' : 'ACTUAL security vulnerabilities';
-
-    return `${scanType} for ${language} code. Use AST guidance for PRECISE vulnerability detection.
-
-PRECISION REQUIREMENTS:
-- Use AST node information to target EXACT vulnerable code segments
-- Provide character-level precision for underlines
-- Only flag ACTUAL vulnerabilities with 85%+ confidence
-- Focus on the specific vulnerable substring within each AST node
-
-AST ANALYSIS SUMMARY:
-- Total AST nodes analyzed: ${astResult.astStats.totalNodes}
-- Security-relevant nodes: ${astResult.astStats.securityRelevantNodes}
-- Previous precise detections: ${astResult.astStats.preciselyLocated}
-
-VULNERABILITY FOCUS AREAS:
-- Hardcoded secrets (API keys, passwords, tokens)
-- SQL injection vulnerabilities  
-- Cross-site scripting (XSS)
-- Code injection (eval, exec)
-- File operation vulnerabilities
-- Weak cryptography usage
-
-RESPONSE FORMAT (CRITICAL - Follow exactly):
-{
-  "issues": [
-    {
-      "line": 12,
-      "column": 23,
-      "endLine": 12, 
-      "endColumn": 35,
-      "message": "Specific vulnerability description",
-      "severity": "error|warning|info",
-      "code": "VULN_CODE",
-      "suggestion": "Precise fix suggestion",
-      "confidence": 95,
-      "precise": true,
-      "astNodeId": 15
-    }
-  ],
-  "summary": "Found X precise vulnerabilities using AST guidance",
-  "overallRisk": "low|medium|high|critical",
-  "precision": "ast-guided"
-}
-
-Code to analyze:
-\`\`\`${language}
-${code}
-\`\`\``;
-  }
-
-  /**
-   * Convert AST-guided response to standard format
-   */
-  private convertASTResponseToStandard(
-    data: any, 
-    astResult: ASTGuidedAnalysisResponse
-  ): AISecurityResponse {
-    try {
-      console.log('Raw AST response data:', JSON.stringify(data, null, 2));
-      
-      if (typeof data === 'string') {
-        data = JSON.parse(data);
-      }
-
-      // Handle wrapped response format with success/data structure
-      let responseData = data;
-      if (data.success && data.data) {
-        responseData = data.data;
-        console.log('Extracted response data from wrapped format:', JSON.stringify(responseData, null, 2));
-      }
-
-      const issues = Array.isArray(responseData.issues) ? responseData.issues.map((issue: any) => {
-        console.log(`Original issue: line ${issue.line}, column ${issue.column} to line ${issue.endLine}, column ${issue.endColumn}`);
-        
-        // Don't convert line numbers - API might already be using 0-based indexing
-        const convertedIssue = {
-          ...issue,
-          line: issue.line, // Keep original line number
-          endLine: issue.endLine, // Keep original endLine number
-          precise: true,
-          astGuided: true,
-          confidence: issue.confidence || 90
-        };
-        
-        console.log(`Converted issue: line ${convertedIssue.line}, column ${convertedIssue.column} to line ${convertedIssue.endLine}, column ${convertedIssue.endColumn}`);
-        return convertedIssue;
-      }) : [];
-
-      console.log('Converted issues without line adjustment:', JSON.stringify(issues, null, 2));
-
-      const result = {
-        issues,
-        summary: responseData.summary || `AST-guided analysis found ${issues.length} precise vulnerabilities`,
-        overallRisk: responseData.overallRisk || "low",
-        isPartial: responseData.isPartial || false,
-        analysisTime: responseData.analysisTime
-      };
-
-      console.log('Final AST analysis result:', JSON.stringify(result, null, 2));
-      return result;
-    } catch (error) {
-      console.error("Failed to parse AST-guided response:", error);
-      return {
-        issues: [],
-        summary: "Failed to process AST-guided analysis response",
-        overallRisk: "low"
-      };
-    }
-  }
-
-  /**
-   * Validates and normalizes API responses to ensure consistent format
+   * Validates and normalizes the API response
    */
   private validateAndNormalizeResponse(data: any): AISecurityResponse {
     try {
-      // If the response is a string, try to parse it
+      // Handle different response formats from the API
+      let parsedData = data;
+      
       if (typeof data === 'string') {
-        return SharedPromptBuilder.parseAIResponse(data);
+        parsedData = SharedPromptBuilder.parseAIResponse(data);
+      }
+
+      // Handle nested response structure - actual data is in response.data
+      if (parsedData.data) {
+        parsedData = parsedData.data;
       }
       
-      // If it's already an object, validate and normalize
-      if (data && typeof data === 'object') {
-        // Handle wrapped response format with success/data structure
-        let responseData = data;
-        if (data.success && data.data) {
-          responseData = data.data;
-        }
+      // Ensure the response has the required structure
+      const normalizedResponse: AISecurityResponse = {
+        issues: Array.isArray(parsedData.issues) ? parsedData.issues.map((issue: any) => ({
+          line: Math.max(0, Number(issue.line) || 0),
+          column: Math.max(0, Number(issue.column) || 0),
+          endLine: Math.max(0, Number(issue.endLine) || Number(issue.line) || 0),
+          endColumn: Math.max(0, Number(issue.endColumn) || Number(issue.column) || 0),
+          message: String(issue.message || 'Security issue detected'),
+          severity: ['error', 'warning', 'info'].includes(issue.severity) ? issue.severity : 'warning',
+          code: String(issue.code || 'SECURITY_ISSUE'),
+          suggestion: issue.suggestion ? String(issue.suggestion) : undefined,
+          confidence: Math.min(100, Math.max(0, Number(issue.confidence) || 50)),
+          cve: Array.isArray(issue.cve) ? issue.cve : [],
+          searchQuery: issue.searchQuery ? String(issue.searchQuery) : undefined
+        })) : [],
+        summary: String(parsedData.summary || 'Security analysis completed'),
+        overallRisk: ['low', 'medium', 'high', 'critical'].includes(parsedData.overallRisk) 
+          ? parsedData.overallRisk : 'low',
+        isPartial: Boolean(parsedData.isPartial),
+        analysisTime: parsedData.analysisTime
+      };
 
-        const issues = Array.isArray(responseData.issues) ? responseData.issues.map((issue: any) => ({
-          ...issue,
-          line: issue.line, // Keep original line number - don't convert
-          endLine: issue.endLine, // Keep original endLine number - don't convert
-        })) : [];
+      Logger.debug('Normalized response:', JSON.stringify(normalizedResponse, null, 2));
 
-        return {
-          issues,
-          summary: responseData.summary || "Security analysis completed",
-          overallRisk: responseData.overallRisk || "low",
-          isPartial: responseData.isPartial || false,
-          analysisTime: responseData.analysisTime
-        };
-      }
-      
-      throw new Error("Invalid response format");
+      // Filter out low confidence issues (reduce threshold from 75 to 70 to keep high confidence issues)
+      return SharedPromptBuilder.filterLowConfidenceIssues(normalizedResponse, 70);
     } catch (error) {
-      console.error("Failed to validate VulnZap response:", error);
+      Logger.error('Error validating API response:', error as Error);
       return {
         issues: [],
-        summary: "Failed to process security analysis response",
-        overallRisk: "low"
+        summary: 'Failed to process security analysis response',
+        overallRisk: 'low'
       };
     }
   }
