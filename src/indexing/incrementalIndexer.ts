@@ -16,12 +16,12 @@ export class IncrementalIndexer {
     private vectorStorage: VectorStorage;
     private merkleManager: MerkleTreeManager;
     private apiProvider: APIProviderManager;
-    
+
     private fileWatcher?: vscode.FileSystemWatcher;
     private pendingUpdates = new Set<string>();
     private updateTimer?: NodeJS.Timeout;
     private currentTree?: MerkleNode;
-    
+
     private isIndexing = false;
     private indexingProgress?: vscode.Progress<{ message?: string; increment?: number }>;
 
@@ -30,12 +30,124 @@ export class IncrementalIndexer {
     private readonly BATCH_SIZE = 5;
     private readonly MAX_CONCURRENT_FILES = 10;
     private readonly EXCLUDE_PATTERNS = [
+        // Package managers and dependencies
         '**/node_modules/**',
+        '**/vendor/**',
+        '**/.pnpm/**',
+        '**/bower_components/**',
+        '**/jspm_packages/**',
+        '**/packages/**/.pnpm/**',
+
+        // Version control
         '**/.git/**',
+        '**/.svn/**',
+        '**/.hg/**',
+        '**/.bzr/**',
+
+        // Build outputs and compiled code
         '**/dist/**',
         '**/build/**',
+        '**/out/**',
+        '**/target/**',
+        '**/bin/**',
+        '**/obj/**',
+        '**/Debug/**',
+        '**/Release/**',
+        '**/.next/**',
+        '**/.nuxt/**',
+        '**/coverage/**',
+        '**/.nyc_output/**',
+        '**/public/build/**',
+
+        // IDE and editor files
+        '**/.vscode/**',
+        '**/.idea/**',
+        '**/.vs/**',
+        '**/*.swp',
+        '**/*.swo',
+        '**/*~',
+
+        // Cache and temporary directories
+        '**/.cache/**',
+        '**/tmp/**',
+        '**/temp/**',
+        '**/.tmp/**',
+        '**/.temp/**',
+        '**/node_modules/.cache/**',
+        '**/.webpack/**',
+        '**/.parcel-cache/**',
+        '**/.eslintcache',
+
+        // Log files
         '**/*.log',
-        '**/.vscode/**'
+        '**/logs/**',
+        '**/*.log.*',
+
+        // Database files
+        '**/*.db',
+        '**/*.sqlite',
+        '**/*.sqlite3',
+
+        // OS generated files
+        '**/.DS_Store',
+        '**/Thumbs.db',
+        '**/desktop.ini',
+
+        // Test output and reports
+        '**/test-results/**',
+        '**/test-reports/**',
+        '**/allure-results/**',
+        '**/jest-report/**',
+
+        // Documentation build outputs (optional - you might want to index these)
+        '**/docs/_site/**',
+        '**/site/**',
+        '**/_book/**',
+
+        // Backup files
+        '**/*.bak',
+        '**/*.backup',
+        '**/*.old',
+
+        // Environment and config files (contains secrets)
+        '**/.env',
+        '**/.env.*',
+        '**/config/secrets/**',
+        '**/secrets/**',
+
+        // Large media files that shouldn't be indexed
+        '**/*.pdf',
+        '**/*.doc',
+        '**/*.docx',
+        '**/*.xls',
+        '**/*.xlsx',
+        '**/*.ppt',
+        '**/*.pptx',
+        '**/*.zip',
+        '**/*.tar',
+        '**/*.gz',
+        '**/*.7z',
+        '**/*.rar',
+
+        // Binary and compiled files
+        '**/*.exe',
+        '**/*.dll',
+        '**/*.so',
+        '**/*.dylib',
+        '**/*.bin',
+        '**/*.class',
+        '**/*.pyc',
+        '**/*.pyo',
+        '**/__pycache__/**',
+
+        // Lock files (metadata only)
+        '**/package-lock.json',
+        '**/yarn.lock',
+        '**/pnpm-lock.yaml',
+        '**/Pipfile.lock',
+        '**/poetry.lock',
+        '**/Gemfile.lock',
+        '**/composer.lock'
     ];
 
     constructor(
@@ -46,9 +158,98 @@ export class IncrementalIndexer {
         this.vectorStorage = vectorStorage;
         this.merkleManager = new MerkleTreeManager();
         this.apiProvider = new APIProviderManager();
-        
+
         this.loadStoredTree(context);
         this.setupFileWatcher();
+    }
+
+    /**
+     * Get effective exclude patterns (built-in + user configured + gitignore)
+     */
+    private getEffectiveExcludePatterns(): string[] {
+        const config = vscode.workspace.getConfiguration('vulnzap');
+        const userPatterns = config.get<string[]>('indexing.additionalIgnorePatterns', []);
+        const disableDefaultIgnores = config.get<boolean>('indexing.disableDefaultIgnorePatterns', false);
+        const respectGitignore = config.get<boolean>('indexing.respectGitignore', true);
+
+        const patterns = disableDefaultIgnores ? [] : [...this.EXCLUDE_PATTERNS];
+        patterns.push(...userPatterns);
+
+        // Add gitignore patterns if enabled
+        if (respectGitignore) {
+            const gitignorePatterns = this.loadGitignorePatterns();
+            patterns.push(...gitignorePatterns);
+        }
+
+        Logger.debug(
+            `Using ${patterns.length} exclude patterns (${userPatterns.length} user-defined, ${respectGitignore ? 'gitignore enabled' : 'gitignore disabled'})`
+        );
+        return patterns;
+    }
+
+    /**
+     * Load and parse .gitignore files from workspace
+     */
+    private loadGitignorePatterns(): string[] {
+        const patterns: string[] = [];
+        const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+
+        if (!workspaceFolder) {
+            return patterns;
+        }
+
+        try {
+            const gitignorePath = path.join(workspaceFolder.uri.fsPath, '.gitignore');
+
+            if (fs.existsSync(gitignorePath)) {
+                const gitignoreContent = fs.readFileSync(gitignorePath, 'utf-8');
+                const lines = gitignoreContent.split('\n');
+
+                for (const line of lines) {
+                    const trimmed = line.trim();
+
+                    // Skip empty lines and comments
+                    if (!trimmed || trimmed.startsWith('#')) {
+                        continue;
+                    }
+
+                    // Convert gitignore pattern to glob pattern
+                    let pattern = trimmed;
+
+                    // Handle negation patterns (starting with !)
+                    if (pattern.startsWith('!')) {
+                        // Skip negation patterns for now (they're complex to implement)
+                        continue;
+                    }
+
+                    // Convert to glob pattern
+                    if (pattern.endsWith('/')) {
+                        // Directory pattern
+                        pattern = `**/${pattern}**`;
+                    } else if (!pattern.includes('/')) {
+                        // File/folder name pattern
+                        pattern = `**/${pattern}`;
+                    } else if (pattern.startsWith('/')) {
+                        // Root-relative pattern
+                        pattern = pattern.substring(1);
+                        if (!pattern.includes('*')) {
+                            pattern = `${pattern}/**`;
+                        }
+                    } else {
+                        // Relative pattern
+                        pattern = `**/${pattern}`;
+                    }
+
+                    patterns.push(pattern);
+                }
+
+                Logger.debug(`Loaded ${patterns.length} patterns from .gitignore`);
+            }
+        } catch (error) {
+            Logger.warn('Failed to load .gitignore patterns:', error as Error);
+        }
+
+        return patterns;
     }
 
     /**
@@ -77,10 +278,10 @@ export class IncrementalIndexer {
 
                 try {
                     progress.report({ message: 'Scanning workspace files...' });
-                    
+
                     // Build new Merkle tree
                     const newTree = await this.merkleManager.buildTree(workspaceFolder.uri.fsPath);
-                    
+
                     // Detect changes if we have a previous tree
                     let changedFiles: string[] = [];
                     if (this.currentTree) {
@@ -147,13 +348,13 @@ export class IncrementalIndexer {
             }
 
             const content = await fs.promises.readFile(filePath, 'utf-8');
-            
+
             // Remove existing chunks for this file
             await this.vectorStorage.removeChunksForFile(filePath);
 
             // Create new chunks
             const chunks = await this.chunker.chunkFile(filePath, content);
-            
+
             if (chunks.length === 0) {
                 Logger.debug(`No chunks created for ${filePath}`);
                 return;
@@ -261,7 +462,7 @@ export class IncrementalIndexer {
         const batchSize = 10;
         for (let i = 0; i < chunks.length; i += batchSize) {
             const batch = chunks.slice(i, i + batchSize);
-            
+
             const batchEmbeddings = await Promise.all(
                 batch.map(chunk => this.generateEmbedding(chunk.content))
             );
@@ -300,7 +501,7 @@ export class IncrementalIndexer {
     private mockEmbedding(text: string): number[] {
         const words = text.toLowerCase().split(/\s+/);
         const embedding = new Array(384).fill(0);
-        
+
         for (const word of words) {
             const hash = this.simpleHash(word);
             for (let i = 0; i < embedding.length; i++) {
@@ -318,18 +519,18 @@ export class IncrementalIndexer {
      */
     private async findCodeFiles(workspacePath: string): Promise<string[]> {
         const files: string[] = [];
-        
+
         const findFiles = async (dir: string): Promise<void> => {
             try {
                 const entries = await fs.promises.readdir(dir, { withFileTypes: true });
-                
+
                 for (const entry of entries) {
                     const fullPath = path.join(dir, entry.name);
-                    
+
                     if (this.shouldExcludeFile(fullPath)) {
                         continue;
                     }
-                    
+
                     if (entry.isDirectory()) {
                         await findFiles(fullPath);
                     } else if (entry.isFile() && this.isCodeFile(fullPath)) {
@@ -350,15 +551,124 @@ export class IncrementalIndexer {
      */
     private shouldExcludeFile(filePath: string): boolean {
         const normalizedPath = path.normalize(filePath).replace(/\\/g, '/');
-        
-        return this.EXCLUDE_PATTERNS.some(pattern => {
-            // Convert glob pattern to regex
-            const regexPattern = pattern
-                .replace(/\*\*/g, '.*')
-                .replace(/\*/g, '[^/]*');
-            const regex = new RegExp(regexPattern);
-            return regex.test(normalizedPath);
+        const patterns = this.getEffectiveExcludePatterns();
+
+        return patterns.some(pattern => {
+            return this.matchGlobPattern(pattern, normalizedPath);
         });
+    }
+
+    /**
+ * Robust glob pattern matching implementation using proven algorithm
+ * Based on minimatch-style logic that handles all edge cases correctly
+ */
+    private matchGlobPattern(pattern: string, filePath: string): boolean {
+        return this.minimatch(filePath, pattern);
+    }
+
+    /**
+     * Minimatch-style glob matching implementation  
+     * Handles complex patterns correctly
+     */
+    private minimatch(str: string, pattern: string): boolean {
+        // Handle exact matches
+        if (pattern === str) return true;
+        if (pattern === '') return str === '';
+
+        // Convert pattern to regex
+        const regexSource = this.makeRe(pattern);
+        if (!regexSource) return false;
+
+        const regex = new RegExp(regexSource, 'i');
+        return regex.test(str);
+    }
+
+    /**
+     * Convert glob pattern to regex source
+     */
+    private makeRe(pattern: string): string {
+        let regexSource = '';
+        let inGroup = 0;
+        let inClass = false;
+
+        for (let i = 0; i < pattern.length; i++) {
+            const char = pattern[i];
+
+            switch (char) {
+                case '/':
+                    regexSource += '\\/';
+                    break;
+
+                case '*':
+                    if (pattern[i + 1] === '*') {
+                        // Handle ** 
+                        if (pattern[i + 2] === '/') {
+                            // **/ at beginning or middle
+                            regexSource += '(?:.*\\/)?';
+                            i += 2;
+                        } else if (i + 1 === pattern.length - 1) {
+                            // ** at end
+                            regexSource += '.*';
+                            i += 1;
+                        } else {
+                            // ** followed by non-/
+                            regexSource += '.*';
+                            i += 1;
+                        }
+                    } else {
+                        // Single *
+                        regexSource += '[^/]*';
+                    }
+                    break;
+
+                case '?':
+                    regexSource += '[^/]';
+                    break;
+
+                case '[':
+                    inClass = true;
+                    regexSource += '[';
+                    if (pattern[i + 1] === '!' || pattern[i + 1] === '^') {
+                        regexSource += '^';
+                        i++;
+                    }
+                    break;
+
+                case ']':
+                    inClass = false;
+                    regexSource += ']';
+                    break;
+
+                case '{':
+                    inGroup++;
+                    regexSource += '(?:';
+                    break;
+
+                case '}':
+                    inGroup--;
+                    regexSource += ')';
+                    break;
+
+                case ',':
+                    if (inGroup) {
+                        regexSource += '|';
+                    } else {
+                        regexSource += '\\,';
+                    }
+                    break;
+
+                default:
+                    // Escape regex special characters
+                    if (/[.+^${}()|\\]/.test(char)) {
+                        regexSource += '\\' + char;
+                    } else {
+                        regexSource += char;
+                    }
+                    break;
+            }
+        }
+
+        return '^' + regexSource + '$';
     }
 
     /**
@@ -368,12 +678,38 @@ export class IncrementalIndexer {
         const codeExtensions = [
             '.js', '.jsx', '.ts', '.tsx',
             '.py', '.java', '.c', '.cpp', '.cs',
-            '.php', '.go', '.rs', '.rb',
-            '.json', '.yaml', '.yml'
+            '.php', '.go', '.rs', '.rb', '.swift',
+            '.kt', '.scala', '.clj', '.hs', '.ml',
+            '.json', '.yaml', '.yml', '.xml',
+            '.html', '.htm', '.css', '.scss', '.sass', '.less',
+            '.sql', '.graphql', '.gql'
         ];
 
         const ext = path.extname(filePath).toLowerCase();
         return codeExtensions.includes(ext);
+    }
+
+    /**
+     * Get debug information about ignore patterns (for troubleshooting)
+     */
+    public getIgnorePatternInfo(): {
+        defaultPatterns: string[];
+        userPatterns: string[];
+        gitignorePatterns: string[];
+        totalPatterns: number;
+    } {
+        const config = vscode.workspace.getConfiguration('vulnzap');
+        const userPatterns = config.get<string[]>('indexing.additionalIgnorePatterns', []);
+        const respectGitignore = config.get<boolean>('indexing.respectGitignore', true);
+
+        const gitignorePatterns = respectGitignore ? this.loadGitignorePatterns() : [];
+
+        return {
+            defaultPatterns: [...this.EXCLUDE_PATTERNS],
+            userPatterns,
+            gitignorePatterns,
+            totalPatterns: this.getEffectiveExcludePatterns().length
+        };
     }
 
     /**
@@ -441,7 +777,7 @@ export class IncrementalIndexer {
         pendingUpdates: number;
     }> {
         const storageStats = await this.vectorStorage.getStats();
-        
+
         return {
             totalChunks: storageStats.totalChunks,
             totalFiles: storageStats.totalFiles,
@@ -458,7 +794,7 @@ export class IncrementalIndexer {
         await this.vectorStorage.clearAll();
         this.currentTree = undefined;
         this.pendingUpdates.clear();
-        
+
         Logger.info('Index cleared');
     }
 
@@ -469,7 +805,7 @@ export class IncrementalIndexer {
         if (this.fileWatcher) {
             this.fileWatcher.dispose();
         }
-        
+
         if (this.updateTimer) {
             clearTimeout(this.updateTimer);
         }

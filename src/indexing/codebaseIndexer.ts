@@ -356,6 +356,18 @@ export class CodebaseIndexer {
 
         return recommendations;
     }
+
+    /**
+     * Get ignore pattern information for debugging
+     */
+    getIgnorePatternInfo(): {
+        defaultPatterns: string[];
+        userPatterns: string[];
+        gitignorePatterns: string[];
+        totalPatterns: number;
+    } {
+        return this.incrementalIndexer.getIgnorePatternInfo();
+    }
 }
 
 // Export configuration interface for TypeScript

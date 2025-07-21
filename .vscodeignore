@@ -6,6 +6,7 @@ node_modules/**
 **/*.map
 .gitignore
 tsconfig.json
+test-samples/**
 webpack.config.js
 vsc-extension-quickstart.md
 test-*.md

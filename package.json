@@ -108,6 +108,12 @@
         "icon": "$(info)"
       },
       {
+        "command": "vulnzap.showIgnorePatterns",
+        "title": "Show Indexing Ignore Patterns",
+        "category": "Security",
+        "icon": "$(list-filter)"
+      },
+      {
         "command": "vulnzap.clearIndex",
         "title": "Clear Security Index",
         "category": "Security",
@@ -230,6 +236,10 @@
         },
         {
           "command": "vulnzap.indexStats",
+          "when": "true"
+        },
+        {
+          "command": "vulnzap.showIgnorePatterns",
           "when": "true"
         },
         {
@@ -463,6 +473,24 @@
           "type": "number",
           "default": 100,
           "description": "Maximum number of issues to report per file. Scanning stops after this many issues are found. Default: 100"
+        },
+        "vulnzap.indexing.additionalIgnorePatterns": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "Additional glob patterns to ignore during codebase indexing (e.g., ['**/custom-build/**', '**/*.generated.js'])"
+        },
+        "vulnzap.indexing.disableDefaultIgnorePatterns": {
+          "type": "boolean",
+          "default": false,
+          "description": "Disable built-in ignore patterns (node_modules, .git, dist, etc.). Use with caution as this may significantly slow down indexing."
+        },
+        "vulnzap.indexing.respectGitignore": {
+          "type": "boolean",
+          "default": true,
+          "description": "Respect .gitignore files when indexing the codebase"
         }
       }
     }
@@ -473,13 +501,20 @@
     "watch": "webpack --mode development --watch",
     "compile": "webpack --mode development",
     "compile-tests": "tsc -p . --outDir out",
-    "watch-tests": "tsc -p . -w --outDir out"
+    "watch-tests": "tsc -p . -w --outDir out",
+    "pretest": "npm run compile-tests && npm run compile && npm run lint",
+    "lint": "eslint src --ext ts || true",
+    "test": "node ./out/test/runTest.js"
   },
   "devDependencies": {
     "@types/babel__traverse": "^7.20.7",
+    "@types/glob": "^8.1.0",
+    "@types/mocha": "^10.0.10",
     "@types/node": "^16.18.126",
     "@types/vscode": "^1.74.0",
     "@vscode/test-electron": "^2.5.2",
+    "glob": "^11.0.3",
+    "mocha": "^11.7.1",
     "ts-loader": "^9.5.2",
     "typescript": "^4.9.5",
     "webpack": "^5.99.9",

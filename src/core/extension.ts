@@ -463,6 +463,48 @@ export async function activate(context: vscode.ExtensionContext) {
       );
     });
 
+    // Command: Show indexing ignore patterns (for debugging)
+    const showIgnorePatternsCommand = vscode.commands.registerCommand('vulnzap.showIgnorePatterns', async () => {
+      console.log('VulnZap: Show ignore patterns command called');
+      
+      try {
+        // Get ignore pattern info from the codebase indexer
+        const ignoreInfo = codebaseIndexer.getIgnorePatternInfo();
+        
+        if (!ignoreInfo) {
+          vscode.window.showErrorMessage('Unable to retrieve ignore pattern information');
+          return;
+        }
+
+        const content = [
+          '# VulnZap Indexing Ignore Patterns\n',
+          `**Total Patterns:** ${ignoreInfo.totalPatterns}\n`,
+          '## Default Patterns (Built-in)',
+          '```',
+          ...ignoreInfo.defaultPatterns,
+          '```\n',
+          '## User-Defined Patterns',
+          ignoreInfo.userPatterns.length > 0 ? '```' : '_None configured_',
+          ...ignoreInfo.userPatterns,
+          ignoreInfo.userPatterns.length > 0 ? '```\n' : '\n',
+          '## Gitignore Patterns',
+          ignoreInfo.gitignorePatterns.length > 0 ? '```' : '_None found or disabled_',
+          ...ignoreInfo.gitignorePatterns,
+          ignoreInfo.gitignorePatterns.length > 0 ? '```' : ''
+        ].join('\n');
+
+        const doc = await vscode.workspace.openTextDocument({
+          content,
+          language: 'markdown'
+        });
+
+        await vscode.window.showTextDocument(doc);
+      } catch (error) {
+        console.error('Error showing ignore patterns:', error);
+        vscode.window.showErrorMessage('Error retrieving ignore patterns: ' + (error as Error).message);
+      }
+    });
+
     const clearIndexCommand = vscode.commands.registerCommand('vulnzap.clearIndex', async () => {
       console.log('VulnZap: Clear index command called');
       
@@ -909,6 +951,7 @@ export async function activate(context: vscode.ExtensionContext) {
       loginCommand,
       buildIndexCommand,
       indexStatsCommand,
+      showIgnorePatternsCommand,
       clearIndexCommand,
       findSimilarCodeCommand,
       scanDependenciesCommand,
