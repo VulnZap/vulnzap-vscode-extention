@@ -4,10 +4,10 @@ import { DiagnosticProvider } from "../providers/diagnosticProvider";
 import { DependencyDiagnosticProvider } from "../providers/dependencyDiagnosticProvider";
 import { APIProviderManager } from "../providers/apiProviders";
 import { SecurityViewProvider } from "../providers/securityViewProvider";
-import { CodebaseIndexer } from '../indexing/codebaseIndexer';
-import { CodebaseSecurityAnalyzer } from '../security/codebaseSecurityAnalyzer';
-import { DependencyScanner } from '../dependencies/dependencyScanner';
-import { Logger } from '../utils/logger';
+import { CodebaseIndexer } from "../indexing/codebaseIndexer";
+import { CodebaseSecurityAnalyzer } from "../security/codebaseSecurityAnalyzer";
+import { DependencyScanner } from "../dependencies/dependencyScanner";
+import { Logger } from "../utils/logger";
 
 /**
  * Main extension activation function
@@ -17,17 +17,21 @@ export async function activate(context: vscode.ExtensionContext) {
   try {
     // Initialize logger first for proper output channel logging
     Logger.initialize();
-    Logger.info('VulnZap extension is activating...');
+    Logger.info("VulnZap extension is activating...");
 
     // Initialize core security analysis components
     const codebaseIndexer = new CodebaseIndexer(context);
-    const codebaseSecurityAnalyzer = new CodebaseSecurityAnalyzer(codebaseIndexer);
+    const codebaseSecurityAnalyzer = new CodebaseSecurityAnalyzer(
+      codebaseIndexer
+    );
 
     const diagnosticProvider = new DiagnosticProvider(context);
-    const dependencyDiagnosticProvider = new DependencyDiagnosticProvider(context);
+    const dependencyDiagnosticProvider = new DependencyDiagnosticProvider(
+      context
+    );
     const securityViewProvider = new SecurityViewProvider(context);
     const dependencyScanner = new DependencyScanner(context);
-        
+
     // Initialize the new indexing system
     await codebaseIndexer.initialize();
 
@@ -42,7 +46,9 @@ export async function activate(context: vscode.ExtensionContext) {
     dependencyDiagnosticProvider.setSecurityViewProvider(securityViewProvider);
 
     // Connect dependency scanner with dependency diagnostic provider
-    dependencyScanner.setDependencyDiagnosticProvider(dependencyDiagnosticProvider);
+    dependencyScanner.setDependencyDiagnosticProvider(
+      dependencyDiagnosticProvider
+    );
 
     // Get user configuration preferences
     let isEnabled = vscode.workspace
@@ -87,16 +93,18 @@ export async function activate(context: vscode.ExtensionContext) {
             0
           );
           if (quickResponse.issues.length > 0) {
-            const quickIssues = quickResponse.issues.map(issue => ({
+            const quickIssues = quickResponse.issues.map((issue) => ({
               line: issue.startLine - 1,
               column: issue.startColumn,
               endLine: issue.endLine - 1,
               endColumn: issue.endColumn,
               message: issue.message,
-                             severity: codebaseSecurityAnalyzer.convertToVSCodeSeverity(issue.severity),
+              severity: codebaseSecurityAnalyzer.convertToVSCodeSeverity(
+                issue.severity
+              ),
               code: issue.type,
               suggestion: issue.suggestion,
-              confidence: issue.confidence
+              confidence: issue.confidence,
             }));
             diagnosticProvider.updateDiagnostics(document, quickIssues);
             updateStatusBar("quick-scan");
@@ -206,7 +214,9 @@ export async function activate(context: vscode.ExtensionContext) {
         try {
           const config = vscode.workspace.getConfiguration("vulnzap");
           await configureVulnZap(config);
-          vscode.window.showInformationMessage("✅ VulnZap API configured successfully!");
+          vscode.window.showInformationMessage(
+            "✅ VulnZap API configured successfully!"
+          );
         } catch (error) {
           console.error("VulnZap: Error in configureApiKeys:", error);
           vscode.window.showErrorMessage(
@@ -224,14 +234,14 @@ export async function activate(context: vscode.ExtensionContext) {
         const config = vscode.workspace.getConfiguration("vulnzap");
         const currentValue = config.get("enableASTPrecision", true);
         const newValue = !currentValue;
-        
+
         await config.update("enableASTPrecision", newValue, true);
-        
-        const message = newValue 
-          ? "✅ AST-guided precision analysis enabled" 
+
+        const message = newValue
+          ? "✅ AST-guided precision analysis enabled"
           : "❌ AST-guided precision analysis disabled";
         vscode.window.showInformationMessage(message);
-        
+
         // Rescan current file if one is open
         const activeEditor = vscode.window.activeTextEditor;
         if (activeEditor && isEnabled) {
@@ -292,9 +302,57 @@ export async function activate(context: vscode.ExtensionContext) {
           },
           async (progress, token) => {
             const supportedExtensions = [".js", ".ts", ".py", ".java"];
+
+            // Comprehensive exclude pattern for build/output directories
+            const excludePatterns = [
+              // Package managers & dependencies
+              "**/node_modules/**",
+              "**/bower_components/**",
+
+              // JavaScript/TypeScript build outputs
+              "**/dist/**",
+              "**/build/**",
+              "**/out/**",
+              "**/.next/**",
+              "**/.nuxt/**",
+              "**/coverage/**",
+              "**/.nyc_output/**",
+
+              // Python build/cache directories
+              "**/__pycache__/**",
+              "**/build/**",
+              "**/dist/**",
+              "**/.pytest_cache/**",
+              "**/venv/**",
+              "**/env/**",
+              "**/.venv/**",
+              "**/site-packages/**",
+
+              // Java build outputs
+              "**/target/**",
+              "**/bin/**",
+              "**/.gradle/**",
+              "**/gradle/**",
+              "**/classes/**",
+
+              // IDE and editor directories
+              "**/.vscode/**",
+              "**/.idea/**",
+              "**/*.swp",
+              "**/*.swo",
+
+              // Version control and temp directories
+              "**/.git/**",
+              "**/tmp/**",
+              "**/temp/**",
+              "**/logs/**",
+              "**/.cache/**",
+              "**/.DS_Store",
+            ].join(",");
+
             const files = await vscode.workspace.findFiles(
               `**/*{${supportedExtensions.join(",")}}`,
-              "**/node_modules/**"
+              `{${excludePatterns}}`
             );
 
             let scannedCount = 0;
@@ -436,368 +494,506 @@ export async function activate(context: vscode.ExtensionContext) {
     );
 
     // Vector Indexing Commands
-    const buildIndexCommand = vscode.commands.registerCommand('vulnzap.buildIndex', async () => {
-      console.log('VulnZap: Build index command called');
-      
-      try {
-        await codebaseIndexer.buildIndex();
-      } catch (error) {
-        console.error('Error building index:', error);
-        vscode.window.showErrorMessage('Error building security index: ' + (error as Error).message);
-      }
-    });
+    const buildIndexCommand = vscode.commands.registerCommand(
+      "vulnzap.buildIndex",
+      async () => {
+        console.log("VulnZap: Build index command called");
 
-    const indexStatsCommand = vscode.commands.registerCommand('vulnzap.indexStats', async () => {
-      console.log('VulnZap: Index stats command called');
-      
-      const stats = await codebaseIndexer.getIndexStats();
-      
-      vscode.window.showInformationMessage(
-        `Index Stats:\n` +
-        `• Total Chunks: ${stats.totalChunks}\n` +
-        `• Total Files: ${stats.totalFiles}\n` +
-        `• Average Chunk Size: ${stats.avgChunkSize}\n` +
-        `• Security Relevant: ${stats.securityRelevantChunks}\n` +
-        `• Last Indexed: ${stats.lastIndexed ? stats.lastIndexed.toLocaleString() : 'Never'}\n` +
-        `• Pending Updates: ${stats.pendingUpdates}`
-      );
-    });
+        try {
+          await codebaseIndexer.buildIndex();
+        } catch (error) {
+          console.error("Error building index:", error);
+          vscode.window.showErrorMessage(
+            "Error building security index: " + (error as Error).message
+          );
+        }
+      }
+    );
+
+    const indexStatsCommand = vscode.commands.registerCommand(
+      "vulnzap.indexStats",
+      async () => {
+        console.log("VulnZap: Index stats command called");
+
+        const stats = await codebaseIndexer.getIndexStats();
+
+        vscode.window.showInformationMessage(
+          `Index Stats:\n` +
+            `• Total Chunks: ${stats.totalChunks}\n` +
+            `• Total Files: ${stats.totalFiles}\n` +
+            `• Average Chunk Size: ${stats.avgChunkSize}\n` +
+            `• Security Relevant: ${stats.securityRelevantChunks}\n` +
+            `• Last Indexed: ${
+              stats.lastIndexed ? stats.lastIndexed.toLocaleString() : "Never"
+            }\n` +
+            `• Pending Updates: ${stats.pendingUpdates}`
+        );
+      }
+    );
 
     // Command: Show indexing ignore patterns (for debugging)
-    const showIgnorePatternsCommand = vscode.commands.registerCommand('vulnzap.showIgnorePatterns', async () => {
-      console.log('VulnZap: Show ignore patterns command called');
-      
-      try {
-        // Get ignore pattern info from the codebase indexer
-        const ignoreInfo = codebaseIndexer.getIgnorePatternInfo();
-        
-        if (!ignoreInfo) {
-          vscode.window.showErrorMessage('Unable to retrieve ignore pattern information');
-          return;
-        }
+    const showIgnorePatternsCommand = vscode.commands.registerCommand(
+      "vulnzap.showIgnorePatterns",
+      async () => {
+        console.log("VulnZap: Show ignore patterns command called");
 
-        const content = [
-          '# VulnZap Indexing Ignore Patterns\n',
-          `**Total Patterns:** ${ignoreInfo.totalPatterns}\n`,
-          '## Default Patterns (Built-in)',
-          '```',
-          ...ignoreInfo.defaultPatterns,
-          '```\n',
-          '## User-Defined Patterns',
-          ignoreInfo.userPatterns.length > 0 ? '```' : '_None configured_',
-          ...ignoreInfo.userPatterns,
-          ignoreInfo.userPatterns.length > 0 ? '```\n' : '\n',
-          '## Gitignore Patterns',
-          ignoreInfo.gitignorePatterns.length > 0 ? '```' : '_None found or disabled_',
-          ...ignoreInfo.gitignorePatterns,
-          ignoreInfo.gitignorePatterns.length > 0 ? '```' : ''
-        ].join('\n');
-
-        const doc = await vscode.workspace.openTextDocument({
-          content,
-          language: 'markdown'
-        });
-
-        await vscode.window.showTextDocument(doc);
-      } catch (error) {
-        console.error('Error showing ignore patterns:', error);
-        vscode.window.showErrorMessage('Error retrieving ignore patterns: ' + (error as Error).message);
-      }
-    });
-
-    const clearIndexCommand = vscode.commands.registerCommand('vulnzap.clearIndex', async () => {
-      console.log('VulnZap: Clear index command called');
-      
-      const choice = await vscode.window.showWarningMessage(
-        'Are you sure you want to clear the security index? This will remove all indexed code chunks.',
-        'Clear Index',
-        'Cancel'
-      );
-
-      if (choice === 'Clear Index') {
         try {
-          await codebaseIndexer.clearIndex();
-          vscode.window.showInformationMessage('Security index cleared successfully');
-        } catch (error) {
-          console.error('Error clearing index:', error);
-          vscode.window.showErrorMessage('Error clearing index: ' + (error as Error).message);
-        }
-      }
-    });
+          // Get ignore pattern info from the codebase indexer
+          const ignoreInfo = codebaseIndexer.getIgnorePatternInfo();
 
-    const findSimilarCodeCommand = vscode.commands.registerCommand('vulnzap.findSimilarCode', async () => {
-      console.log('VulnZap: Find similar code command called');
-      
-      const activeEditor = vscode.window.activeTextEditor;
-      if (!activeEditor) {
-        vscode.window.showWarningMessage('No active editor to analyze');
-        return;
-      }
-
-      const selection = activeEditor.selection;
-      const selectedText = activeEditor.document.getText(selection);
-      
-      if (!selectedText.trim()) {
-        vscode.window.showWarningMessage('Please select some code to find similar patterns');
-        return;
-      }
-
-      try {
-        const results = await codebaseIndexer.findSimilarCode(selectedText, {
-          max_results: 10,
-          similarity_threshold: 0.6
-        });
-
-        if (results.length === 0) {
-          vscode.window.showInformationMessage('No similar code patterns found');
-          return;
-        }
-
-        // Create a new document to show results
-        const resultContent = results.map((result: any, index: number) => {
-          return `## Result ${index + 1}\n` +
-                 `**File:** ${result.filePath}\n` +
-                 `**Lines:** ${result.startLine}-${result.endLine}\n` +
-                 `**Security Keywords:** ${result.metadata.hasSecurityKeywords ? 'Yes' : 'No'}\n` +
-                 `**Language:** ${result.language}\n\n` +
-                 '```\n' +
-                 result.content.substring(0, 500) + (result.content.length > 500 ? '...' : '') +
-                 '\n```\n\n';
-        }).join('---\n\n');
-
-        const doc = await vscode.workspace.openTextDocument({
-          content: `# Similar Code Patterns\n\n${resultContent}`,
-          language: 'markdown'
-        });
-
-        await vscode.window.showTextDocument(doc);
-      } catch (error) {
-        console.error('Error finding similar code:', error);
-        vscode.window.showErrorMessage('Error finding similar code: ' + (error as Error).message);
-      }
-    });
-
-    // Dependency Scanning Commands
-    const scanDependenciesCommand = vscode.commands.registerCommand('vulnzap.scanDependencies', async () => {
-      console.log('VulnZap: Scan dependencies command called');
-      
-      try {
-        await vscode.window.withProgress(
-          {
-            location: vscode.ProgressLocation.Notification,
-            title: "Scanning dependencies for vulnerabilities...",
-            cancellable: false,
-          },
-          async () => {
-            const results = await dependencyScanner.scanWorkspaceDependencies();
-            
-            if (results.length === 0) {
-              vscode.window.showInformationMessage('No dependencies found or no dependency files detected in workspace.');
-            } else {
-              const totalVulns = results.reduce((sum, result) => sum + result.vulnerabilities.length, 0);
-              const totalPackages = results.reduce((sum, result) => sum + result.totalPackages, 0);
-              
-              if (totalVulns === 0) {
-                vscode.window.showInformationMessage(`✅ No vulnerabilities found in ${totalPackages} dependencies across ${results.length} project(s).`);
-              } else {
-                vscode.window.showWarningMessage(`🔍 Found ${totalVulns} vulnerabilities in ${totalPackages} dependencies. Check notifications for details.`);
-              }
-            }
-          }
-        );
-      } catch (error) {
-        console.error('Error scanning dependencies:', error);
-        vscode.window.showErrorMessage('Error scanning dependencies: ' + (error as Error).message);
-      }
-    });
-
-    const forceDependencyScanCommand = vscode.commands.registerCommand('vulnzap.forceDependencyScan', async () => {
-      console.log('VulnZap: Force dependency scan command called');
-      
-      try {
-        await vscode.window.withProgress(
-          {
-            location: vscode.ProgressLocation.Notification,
-            title: "Force scanning dependencies (ignoring cache)...",
-            cancellable: false,
-          },
-          async () => {
-            const results = await dependencyScanner.forceScan();
-            
-            if (results.length === 0) {
-              vscode.window.showInformationMessage('No dependencies found or no dependency files detected in workspace.');
-            } else {
-              const totalVulns = results.reduce((sum, result) => sum + result.vulnerabilities.length, 0);
-              const totalPackages = results.reduce((sum, result) => sum + result.totalPackages, 0);
-              
-              if (totalVulns === 0) {
-                vscode.window.showInformationMessage(`✅ Fresh scan complete: No vulnerabilities found in ${totalPackages} dependencies.`);
-              } else {
-                vscode.window.showWarningMessage(`🔍 Fresh scan complete: Found ${totalVulns} vulnerabilities in ${totalPackages} dependencies.`);
-              }
-            }
-          }
-        );
-      } catch (error) {
-        console.error('Error force scanning dependencies:', error);
-        vscode.window.showErrorMessage('Error force scanning dependencies: ' + (error as Error).message);
-      }
-    });
-
-    const dependencyCacheStatsCommand = vscode.commands.registerCommand('vulnzap.dependencyCacheStats', async () => {
-      console.log('VulnZap: Dependency cache stats command called');
-      
-      try {
-        const stats = await dependencyScanner.getCacheInfo();
-        const oldestDate = stats.oldestEntry ? new Date(stats.oldestEntry).toLocaleString() : 'N/A';
-        const newestDate = stats.newestEntry ? new Date(stats.newestEntry).toLocaleString() : 'N/A';
-        const sizeInMB = (stats.totalSize / (1024 * 1024)).toFixed(2);
-        
-        const message = `📊 Dependency Cache Statistics\n\n` +
-          `Total Entries: ${stats.totalEntries}\n` +
-          `Total Size: ${sizeInMB} MB\n` +
-          `Expired Entries: ${stats.expiredEntries}\n` +
-          `Oldest Entry: ${oldestDate}\n` +
-          `Newest Entry: ${newestDate}`;
-        
-        vscode.window.showInformationMessage(message, 'Clean Cache').then(selection => {
-          if (selection === 'Clean Cache') {
-            vscode.commands.executeCommand('vulnzap.cleanDependencyCache');
-          }
-        });
-      } catch (error) {
-        console.error('Error getting cache stats:', error);
-        vscode.window.showErrorMessage('Error getting cache statistics: ' + (error as Error).message);
-      }
-    });
-
-    const cleanDependencyCacheCommand = vscode.commands.registerCommand('vulnzap.cleanDependencyCache', async () => {
-      console.log('VulnZap: Clean dependency cache command called');
-      
-      try {
-        const cleanedCount = await dependencyScanner.cleanupCache();
-        vscode.window.showInformationMessage(`🧹 Cleaned up ${cleanedCount} expired cache entries.`);
-      } catch (error) {
-        console.error('Error cleaning cache:', error);
-        vscode.window.showErrorMessage('Error cleaning cache: ' + (error as Error).message);
-      }
-    });
-
-    // Dependency Fix Commands
-    const updateDependencyToVersionCommand = vscode.commands.registerCommand('vulnzap.updateDependencyToVersion', async (packageNameOrUri?: string | vscode.Uri, packageName?: string, version?: string) => {
-      console.log('VulnZap: Update dependency to version command called');
-      
-      try {
-        let targetPackageName: string;
-        let targetVersion: string;
-        let packageJsonUri: vscode.Uri;
-
-        if (packageNameOrUri instanceof vscode.Uri) {
-          // Called from code action with document URI
-          packageJsonUri = packageNameOrUri;
-          targetPackageName = packageName!;
-          targetVersion = version!;
-        } else {
-          // Called from sidebar with package name directly
-          targetPackageName = packageNameOrUri!;
-          targetVersion = packageName!;
-          
-          // Find package.json in workspace
-          const workspaceFolders = vscode.workspace.workspaceFolders;
-          if (!workspaceFolders) {
-            vscode.window.showErrorMessage('No workspace folder found');
+          if (!ignoreInfo) {
+            vscode.window.showErrorMessage(
+              "Unable to retrieve ignore pattern information"
+            );
             return;
           }
-          packageJsonUri = vscode.Uri.file(`${workspaceFolders[0].uri.fsPath}/package.json`);
-        }
 
-        const document = await vscode.workspace.openTextDocument(packageJsonUri);
-        const edit = new vscode.WorkspaceEdit();
-        
-        const text = document.getText();
-        const packageRegex = new RegExp(`("${targetPackageName}"\\s*:\\s*"[^"]*")`, 'g');
-        const match = packageRegex.exec(text);
-        
-        if (match) {
-          const startPos = document.positionAt(text.indexOf(match[1]));
-          const endPos = document.positionAt(text.indexOf(match[1]) + match[1].length);
-          const newText = `"${targetPackageName}": "${targetVersion}"`;
-          
-          edit.replace(packageJsonUri, new vscode.Range(startPos, endPos), newText);
-          
-          const success = await vscode.workspace.applyEdit(edit);
-          if (success) {
-            await document.save();
-            vscode.window.showInformationMessage(`✅ Updated ${targetPackageName} to version ${targetVersion}`);
-          } else {
-            vscode.window.showErrorMessage(`Failed to update ${targetPackageName}`);
+          const content = [
+            "# VulnZap Indexing Ignore Patterns\n",
+            `**Total Patterns:** ${ignoreInfo.totalPatterns}\n`,
+            "## Default Patterns (Built-in)",
+            "```",
+            ...ignoreInfo.defaultPatterns,
+            "```\n",
+            "## User-Defined Patterns",
+            ignoreInfo.userPatterns.length > 0 ? "```" : "_None configured_",
+            ...ignoreInfo.userPatterns,
+            ignoreInfo.userPatterns.length > 0 ? "```\n" : "\n",
+            "## Gitignore Patterns",
+            ignoreInfo.gitignorePatterns.length > 0
+              ? "```"
+              : "_None found or disabled_",
+            ...ignoreInfo.gitignorePatterns,
+            ignoreInfo.gitignorePatterns.length > 0 ? "```" : "",
+          ].join("\n");
+
+          const doc = await vscode.workspace.openTextDocument({
+            content,
+            language: "markdown",
+          });
+
+          await vscode.window.showTextDocument(doc);
+        } catch (error) {
+          console.error("Error showing ignore patterns:", error);
+          vscode.window.showErrorMessage(
+            "Error retrieving ignore patterns: " + (error as Error).message
+          );
+        }
+      }
+    );
+
+    const clearIndexCommand = vscode.commands.registerCommand(
+      "vulnzap.clearIndex",
+      async () => {
+        console.log("VulnZap: Clear index command called");
+
+        const choice = await vscode.window.showWarningMessage(
+          "Are you sure you want to clear the security index? This will remove all indexed code chunks.",
+          "Clear Index",
+          "Cancel"
+        );
+
+        if (choice === "Clear Index") {
+          try {
+            await codebaseIndexer.clearIndex();
+            vscode.window.showInformationMessage(
+              "Security index cleared successfully"
+            );
+          } catch (error) {
+            console.error("Error clearing index:", error);
+            vscode.window.showErrorMessage(
+              "Error clearing index: " + (error as Error).message
+            );
           }
-        } else {
-          vscode.window.showErrorMessage(`Package ${targetPackageName} not found in package.json`);
         }
-      } catch (error) {
-        console.error('Error updating dependency:', error);
-        vscode.window.showErrorMessage('Error updating dependency: ' + (error as Error).message);
       }
-    });
+    );
 
-    const showUpdateCommandCmd = vscode.commands.registerCommand('vulnzap.showUpdateCommand', async (packageName: string) => {
-      console.log('VulnZap: Show update command called for:', packageName);
-      
-      const command = `npm install ${packageName}@latest`;
-      
-      const action = await vscode.window.showInformationMessage(
-        `To update ${packageName}, run this command in your terminal:`,
-        'Copy Command',
-        'Open Terminal'
-      );
-      
-      if (action === 'Copy Command') {
-        await vscode.env.clipboard.writeText(command);
-        vscode.window.showInformationMessage('Command copied to clipboard!');
-      } else if (action === 'Open Terminal') {
-        const terminal = vscode.window.createTerminal('VulnZap Dependency Update');
-        terminal.show();
-        terminal.sendText(command);
-      }
-    });
+    const findSimilarCodeCommand = vscode.commands.registerCommand(
+      "vulnzap.findSimilarCode",
+      async () => {
+        console.log("VulnZap: Find similar code command called");
 
-    const fixAllDependenciesCommand = vscode.commands.registerCommand('vulnzap.fixAllDependencies', async () => {
-      console.log('VulnZap: Fix all dependencies command called');
-      
-      try {
-        const workspaceFolders = vscode.workspace.workspaceFolders;
-        if (!workspaceFolders) {
-          vscode.window.showErrorMessage('No workspace folder found');
+        const activeEditor = vscode.window.activeTextEditor;
+        if (!activeEditor) {
+          vscode.window.showWarningMessage("No active editor to analyze");
           return;
         }
 
-        const action = await vscode.window.showWarningMessage(
-          'This will update all dependencies to their latest versions. This may introduce breaking changes. Are you sure?',
-          'Update All',
-          'Cancel'
+        const selection = activeEditor.selection;
+        const selectedText = activeEditor.document.getText(selection);
+
+        if (!selectedText.trim()) {
+          vscode.window.showWarningMessage(
+            "Please select some code to find similar patterns"
+          );
+          return;
+        }
+
+        try {
+          const results = await codebaseIndexer.findSimilarCode(selectedText, {
+            max_results: 10,
+            similarity_threshold: 0.6,
+          });
+
+          if (results.length === 0) {
+            vscode.window.showInformationMessage(
+              "No similar code patterns found"
+            );
+            return;
+          }
+
+          // Create a new document to show results
+          const resultContent = results
+            .map((result: any, index: number) => {
+              return (
+                `## Result ${index + 1}\n` +
+                `**File:** ${result.filePath}\n` +
+                `**Lines:** ${result.startLine}-${result.endLine}\n` +
+                `**Security Keywords:** ${
+                  result.metadata.hasSecurityKeywords ? "Yes" : "No"
+                }\n` +
+                `**Language:** ${result.language}\n\n` +
+                "```\n" +
+                result.content.substring(0, 500) +
+                (result.content.length > 500 ? "..." : "") +
+                "\n```\n\n"
+              );
+            })
+            .join("---\n\n");
+
+          const doc = await vscode.workspace.openTextDocument({
+            content: `# Similar Code Patterns\n\n${resultContent}`,
+            language: "markdown",
+          });
+
+          await vscode.window.showTextDocument(doc);
+        } catch (error) {
+          console.error("Error finding similar code:", error);
+          vscode.window.showErrorMessage(
+            "Error finding similar code: " + (error as Error).message
+          );
+        }
+      }
+    );
+
+    // Dependency Scanning Commands
+    const scanDependenciesCommand = vscode.commands.registerCommand(
+      "vulnzap.scanDependencies",
+      async () => {
+        console.log("VulnZap: Scan dependencies command called");
+
+        try {
+          await vscode.window.withProgress(
+            {
+              location: vscode.ProgressLocation.Notification,
+              title: "Scanning dependencies for vulnerabilities...",
+              cancellable: false,
+            },
+            async () => {
+              const results =
+                await dependencyScanner.scanWorkspaceDependencies();
+
+              if (results.length === 0) {
+                vscode.window.showInformationMessage(
+                  "No dependencies found or no dependency files detected in workspace."
+                );
+              } else {
+                const totalVulns = results.reduce(
+                  (sum, result) => sum + result.vulnerabilities.length,
+                  0
+                );
+                const totalPackages = results.reduce(
+                  (sum, result) => sum + result.totalPackages,
+                  0
+                );
+
+                if (totalVulns === 0) {
+                  vscode.window.showInformationMessage(
+                    `✅ No vulnerabilities found in ${totalPackages} dependencies across ${results.length} project(s).`
+                  );
+                } else {
+                  vscode.window.showWarningMessage(
+                    `🔍 Found ${totalVulns} vulnerabilities in ${totalPackages} dependencies. Check notifications for details.`
+                  );
+                }
+              }
+            }
+          );
+        } catch (error) {
+          console.error("Error scanning dependencies:", error);
+          vscode.window.showErrorMessage(
+            "Error scanning dependencies: " + (error as Error).message
+          );
+        }
+      }
+    );
+
+    const forceDependencyScanCommand = vscode.commands.registerCommand(
+      "vulnzap.forceDependencyScan",
+      async () => {
+        console.log("VulnZap: Force dependency scan command called");
+
+        try {
+          await vscode.window.withProgress(
+            {
+              location: vscode.ProgressLocation.Notification,
+              title: "Force scanning dependencies (ignoring cache)...",
+              cancellable: false,
+            },
+            async () => {
+              const results = await dependencyScanner.forceScan();
+
+              if (results.length === 0) {
+                vscode.window.showInformationMessage(
+                  "No dependencies found or no dependency files detected in workspace."
+                );
+              } else {
+                const totalVulns = results.reduce(
+                  (sum, result) => sum + result.vulnerabilities.length,
+                  0
+                );
+                const totalPackages = results.reduce(
+                  (sum, result) => sum + result.totalPackages,
+                  0
+                );
+
+                if (totalVulns === 0) {
+                  vscode.window.showInformationMessage(
+                    `✅ Fresh scan complete: No vulnerabilities found in ${totalPackages} dependencies.`
+                  );
+                } else {
+                  vscode.window.showWarningMessage(
+                    `🔍 Fresh scan complete: Found ${totalVulns} vulnerabilities in ${totalPackages} dependencies.`
+                  );
+                }
+              }
+            }
+          );
+        } catch (error) {
+          console.error("Error force scanning dependencies:", error);
+          vscode.window.showErrorMessage(
+            "Error force scanning dependencies: " + (error as Error).message
+          );
+        }
+      }
+    );
+
+    const dependencyCacheStatsCommand = vscode.commands.registerCommand(
+      "vulnzap.dependencyCacheStats",
+      async () => {
+        console.log("VulnZap: Dependency cache stats command called");
+
+        try {
+          const stats = await dependencyScanner.getCacheInfo();
+          const oldestDate = stats.oldestEntry
+            ? new Date(stats.oldestEntry).toLocaleString()
+            : "N/A";
+          const newestDate = stats.newestEntry
+            ? new Date(stats.newestEntry).toLocaleString()
+            : "N/A";
+          const sizeInMB = (stats.totalSize / (1024 * 1024)).toFixed(2);
+
+          const message =
+            `📊 Dependency Cache Statistics\n\n` +
+            `Total Entries: ${stats.totalEntries}\n` +
+            `Total Size: ${sizeInMB} MB\n` +
+            `Expired Entries: ${stats.expiredEntries}\n` +
+            `Oldest Entry: ${oldestDate}\n` +
+            `Newest Entry: ${newestDate}`;
+
+          vscode.window
+            .showInformationMessage(message, "Clean Cache")
+            .then((selection) => {
+              if (selection === "Clean Cache") {
+                vscode.commands.executeCommand("vulnzap.cleanDependencyCache");
+              }
+            });
+        } catch (error) {
+          console.error("Error getting cache stats:", error);
+          vscode.window.showErrorMessage(
+            "Error getting cache statistics: " + (error as Error).message
+          );
+        }
+      }
+    );
+
+    const cleanDependencyCacheCommand = vscode.commands.registerCommand(
+      "vulnzap.cleanDependencyCache",
+      async () => {
+        console.log("VulnZap: Clean dependency cache command called");
+
+        try {
+          const cleanedCount = await dependencyScanner.cleanupCache();
+          vscode.window.showInformationMessage(
+            `🧹 Cleaned up ${cleanedCount} expired cache entries.`
+          );
+        } catch (error) {
+          console.error("Error cleaning cache:", error);
+          vscode.window.showErrorMessage(
+            "Error cleaning cache: " + (error as Error).message
+          );
+        }
+      }
+    );
+
+    // Dependency Fix Commands
+    const updateDependencyToVersionCommand = vscode.commands.registerCommand(
+      "vulnzap.updateDependencyToVersion",
+      async (
+        packageNameOrUri?: string | vscode.Uri,
+        packageName?: string,
+        version?: string
+      ) => {
+        console.log("VulnZap: Update dependency to version command called");
+
+        try {
+          let targetPackageName: string;
+          let targetVersion: string;
+          let packageJsonUri: vscode.Uri;
+
+          if (packageNameOrUri instanceof vscode.Uri) {
+            // Called from code action with document URI
+            packageJsonUri = packageNameOrUri;
+            targetPackageName = packageName!;
+            targetVersion = version!;
+          } else {
+            // Called from sidebar with package name directly
+            targetPackageName = packageNameOrUri!;
+            targetVersion = packageName!;
+
+            // Find package.json in workspace
+            const workspaceFolders = vscode.workspace.workspaceFolders;
+            if (!workspaceFolders) {
+              vscode.window.showErrorMessage("No workspace folder found");
+              return;
+            }
+            packageJsonUri = vscode.Uri.file(
+              `${workspaceFolders[0].uri.fsPath}/package.json`
+            );
+          }
+
+          const document = await vscode.workspace.openTextDocument(
+            packageJsonUri
+          );
+          const edit = new vscode.WorkspaceEdit();
+
+          const text = document.getText();
+          const packageRegex = new RegExp(
+            `("${targetPackageName}"\\s*:\\s*"[^"]*")`,
+            "g"
+          );
+          const match = packageRegex.exec(text);
+
+          if (match) {
+            const startPos = document.positionAt(text.indexOf(match[1]));
+            const endPos = document.positionAt(
+              text.indexOf(match[1]) + match[1].length
+            );
+            const newText = `"${targetPackageName}": "${targetVersion}"`;
+
+            edit.replace(
+              packageJsonUri,
+              new vscode.Range(startPos, endPos),
+              newText
+            );
+
+            const success = await vscode.workspace.applyEdit(edit);
+            if (success) {
+              await document.save();
+              vscode.window.showInformationMessage(
+                `✅ Updated ${targetPackageName} to version ${targetVersion}`
+              );
+            } else {
+              vscode.window.showErrorMessage(
+                `Failed to update ${targetPackageName}`
+              );
+            }
+          } else {
+            vscode.window.showErrorMessage(
+              `Package ${targetPackageName} not found in package.json`
+            );
+          }
+        } catch (error) {
+          console.error("Error updating dependency:", error);
+          vscode.window.showErrorMessage(
+            "Error updating dependency: " + (error as Error).message
+          );
+        }
+      }
+    );
+
+    const showUpdateCommandCmd = vscode.commands.registerCommand(
+      "vulnzap.showUpdateCommand",
+      async (packageName: string) => {
+        console.log("VulnZap: Show update command called for:", packageName);
+
+        const command = `npm install ${packageName}@latest`;
+
+        const action = await vscode.window.showInformationMessage(
+          `To update ${packageName}, run this command in your terminal:`,
+          "Copy Command",
+          "Open Terminal"
         );
 
-        if (action === 'Update All') {
-          const terminal = vscode.window.createTerminal('VulnZap Fix All Dependencies');
+        if (action === "Copy Command") {
+          await vscode.env.clipboard.writeText(command);
+          vscode.window.showInformationMessage("Command copied to clipboard!");
+        } else if (action === "Open Terminal") {
+          const terminal = vscode.window.createTerminal(
+            "VulnZap Dependency Update"
+          );
           terminal.show();
-          
-          // Use npm update to update all dependencies
-          terminal.sendText('npm update');
-          
-          vscode.window.showInformationMessage('🔄 Running npm update to fix all dependencies. Check the terminal for progress.');
+          terminal.sendText(command);
         }
-      } catch (error) {
-        console.error('Error fixing all dependencies:', error);
-        vscode.window.showErrorMessage('Error fixing all dependencies: ' + (error as Error).message);
       }
-    });
+    );
+
+    const fixAllDependenciesCommand = vscode.commands.registerCommand(
+      "vulnzap.fixAllDependencies",
+      async () => {
+        console.log("VulnZap: Fix all dependencies command called");
+
+        try {
+          const workspaceFolders = vscode.workspace.workspaceFolders;
+          if (!workspaceFolders) {
+            vscode.window.showErrorMessage("No workspace folder found");
+            return;
+          }
+
+          const action = await vscode.window.showWarningMessage(
+            "This will update all dependencies to their latest versions. This may introduce breaking changes. Are you sure?",
+            "Update All",
+            "Cancel"
+          );
+
+          if (action === "Update All") {
+            const terminal = vscode.window.createTerminal(
+              "VulnZap Fix All Dependencies"
+            );
+            terminal.show();
+
+            // Use npm update to update all dependencies
+            terminal.sendText("npm update");
+
+            vscode.window.showInformationMessage(
+              "🔄 Running npm update to fix all dependencies. Check the terminal for progress."
+            );
+          }
+        } catch (error) {
+          console.error("Error fixing all dependencies:", error);
+          vscode.window.showErrorMessage(
+            "Error fixing all dependencies: " + (error as Error).message
+          );
+        }
+      }
+    );
 
     // Command: Show output channel
     const showOutputChannelCommand = vscode.commands.registerCommand(
-      'vulnzap.showOutputChannel',
+      "vulnzap.showOutputChannel",
       () => {
-        Logger.info('Show output channel command called');
+        Logger.info("Show output channel command called");
         Logger.show();
       }
     );
@@ -817,10 +1013,10 @@ export async function activate(context: vscode.ExtensionContext) {
             diagnosticProvider.clearAll();
           }
         }
-        
-        if (event.affectsConfiguration('vulnzap.enableDebugLogging')) {
-          const config = vscode.workspace.getConfiguration('vulnzap');
-          const debugEnabled = config.get('enableDebugLogging', false);
+
+        if (event.affectsConfiguration("vulnzap.enableDebugLogging")) {
+          const config = vscode.workspace.getConfiguration("vulnzap");
+          const debugEnabled = config.get("enableDebugLogging", false);
           Logger.setDebugMode(debugEnabled);
         }
       }
@@ -831,29 +1027,34 @@ export async function activate(context: vscode.ExtensionContext) {
       forceShow: boolean = false
     ) {
       try {
-        const config = vscode.workspace.getConfiguration('vulnzap');
-        const maxFileSize = config.get<number>('maxFileSizeBytes', 1000000);
-        const maxFileLines = config.get<number>('maxFileLines', 2000);
-        const maxIssues = config.get<number>('maxIssuesPerFile', 100);
-        const fileSize = Buffer.byteLength(document.getText(), 'utf8');
+        const config = vscode.workspace.getConfiguration("vulnzap");
+        const maxFileSize = config.get<number>("maxFileSizeBytes", 1000000);
+        const maxFileLines = config.get<number>("maxFileLines", 2000);
+        const maxIssues = config.get<number>("maxIssuesPerFile", 100);
+        const fileSize = Buffer.byteLength(document.getText(), "utf8");
         const lineCount = document.lineCount;
 
         if (fileSize > maxFileSize || lineCount > maxFileLines) {
           vscode.window.showWarningMessage(
             `VulnZap: File too large to scan (>${maxFileSize} bytes or >${maxFileLines} lines). Skipping scan.`
           );
-          Logger.warn(`Skipping scan for large file: ${document.uri.fsPath} (${fileSize} bytes, ${lineCount} lines)`);
+          Logger.warn(
+            `Skipping scan for large file: ${document.uri.fsPath} (${fileSize} bytes, ${lineCount} lines)`
+          );
           updateStatusBar();
           return;
         }
 
-        Logger.info('=== VULNZAP SCAN STARTING ===');
-        Logger.info('Document:', document.uri.fsPath);
+        Logger.info("=== VULNZAP SCAN STARTING ===");
+        Logger.info("Document:", document.uri.fsPath);
         if (fileSize > 0.5 * maxFileSize || lineCount > 0.5 * maxFileLines) {
-          updateStatusBar('scanning');
-          vscode.window.setStatusBarMessage('$(loading~spin) VulnZap: Scanning large file...', 3000);
+          updateStatusBar("scanning");
+          vscode.window.setStatusBarMessage(
+            "$(loading~spin) VulnZap: Scanning large file...",
+            3000
+          );
         } else {
-          updateStatusBar('scanning');
+          updateStatusBar("scanning");
         }
 
         let issues = await codebaseSecurityAnalyzer.analyzeDocument(document);
@@ -864,19 +1065,24 @@ export async function activate(context: vscode.ExtensionContext) {
           );
         }
 
-        Logger.info('=== SCAN COMPLETED ===');
-        Logger.info('Found issues:', issues.length);
+        Logger.info("=== SCAN COMPLETED ===");
+        Logger.info("Found issues:", issues.length);
         diagnosticProvider.updateDiagnostics(document, issues);
         securityViewProvider.updateSecurityIssues(document, issues);
         updateStatusBar(); // Reset to normal status
 
         // Add notification for debugging
         if (issues.length > 0) {
-          const issueDetails = issues.map(issue => 
-            `Line ${issue.line + 1}: ${issue.message.substring(0, 50)}...`
-          ).join('; ');
+          const issueDetails = issues
+            .map(
+              (issue) =>
+                `Line ${issue.line + 1}: ${issue.message.substring(0, 50)}...`
+            )
+            .join("; ");
         } else {
-          vscode.window.showInformationMessage('✅ VulnZap: No security issues found');
+          vscode.window.showInformationMessage(
+            "✅ VulnZap: No security issues found"
+          );
         }
 
         if (forceShow && issues.length > 0) {
@@ -973,21 +1179,25 @@ export async function activate(context: vscode.ExtensionContext) {
       activeEditor &&
       isSupportedLanguage(activeEditor.document.languageId)
     ) {
-      Logger.debug('Active editor found, performing initial scan');
+      Logger.debug("Active editor found, performing initial scan");
       scanDocument(activeEditor.document);
     } else {
-      Logger.debug('No active editor or unsupported language, skipping initial scan');
+      Logger.debug(
+        "No active editor or unsupported language, skipping initial scan"
+      );
     }
 
     // Initial dependency scan on startup (if enabled)
-    const dependencyScanOnStartup = vscode.workspace.getConfiguration('vulnzap').get<boolean>('dependencyScanOnStartup', true);
+    const dependencyScanOnStartup = vscode.workspace
+      .getConfiguration("vulnzap")
+      .get<boolean>("dependencyScanOnStartup", true);
     if (dependencyScanOnStartup) {
       setTimeout(async () => {
         try {
-          Logger.info('Performing initial dependency scan...');
+          Logger.info("Performing initial dependency scan...");
           await dependencyScanner.scanWorkspaceDependencies();
         } catch (error) {
-          Logger.error('Error during initial dependency scan:', error as Error);
+          Logger.error("Error during initial dependency scan:", error as Error);
         }
       }, 2000); // Wait 2 seconds after activation to avoid blocking startup
     }
