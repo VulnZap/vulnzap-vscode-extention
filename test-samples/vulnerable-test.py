@@ -1,5 +1,3 @@
-# VulnZap Python Test File - Should detect multiple vulnerabilities
-
 import os
 import subprocess
 import hashlib

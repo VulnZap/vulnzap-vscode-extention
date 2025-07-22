@@ -51,8 +51,6 @@ export class CodebaseSecurityAnalyzer {
     // Security patterns for quick detection
     private readonly SECURITY_PATTERNS = {
         sql_injection: [
-            /\$\{.*\}/g,                    // Template literal with variables
-            /['"`]\s*\+\s*\w+/g,           // String concatenation
             /query\s*\(\s*['"`].*\$\{/g,   // Query with template literal
             /execute\s*\(\s*['"`].*\+/g,   // Execute with concatenation
         ],
@@ -77,10 +75,10 @@ export class CodebaseSecurityAnalyzer {
             /rc4\s*\(/gi,                  // RC4 encryption
         ],
         unsafe_functions: [
-            /exec\s*\(/g,                  // Command execution
-            /system\s*\(/g,                // System calls
-            /shell_exec\s*\(/g,            // Shell execution
-            /passthru\s*\(/g,              // PHP passthru
+            /\bexec\s*\(/g,                  // Command execution
+            /\bsystem\s*\(/g,                // System calls
+            /\bshell_exec\s*\(/g,            // Shell execution
+            /\bpassthru\s*\(/g,              // PHP passthru
         ]
     };
 

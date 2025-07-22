@@ -20,9 +20,7 @@ yarn-error.log*
 .env.production
 
 # IDE and editor files
-.vscode/settings.json
-.vscode/launch.json
-.vscode/extensions.json
+.vscode/
 .idea/
 *.swp
 *.swo
