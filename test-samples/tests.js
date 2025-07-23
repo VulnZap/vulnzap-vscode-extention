@@ -33,7 +33,7 @@ app.get('/user', async (req, res) => {
 
 
     // 3. Hardcoded Secrets
-    const GITHUB_TOKEN = "ghp_abcdef1234567890abcdef12345678901234"; // Should be flagged
+    const GITHUB_TOKEN = "testtoken"; // Should be flagged
     const STRIPE_SECRET = "sk_test_51Mexamplekeythatisverylongandlooksreal"; // Should be flagged
     const CUSTOM_API_KEY = "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2"; // Should be flagged
 

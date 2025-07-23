@@ -4,7 +4,7 @@ import { DiagnosticProvider } from "../providers/diagnosticProvider";
 import { DependencyDiagnosticProvider } from "../providers/dependencyDiagnosticProvider";
 import { APIProviderManager } from "../providers/apiProviders";
 import { SecurityViewProvider } from "../providers/securityViewProvider";
-import { CodebaseIndexer } from "../indexing/codebaseIndexer";
+
 import { CodebaseSecurityAnalyzer } from "../security/codebaseSecurityAnalyzer";
 import { DependencyScanner } from "../dependencies/dependencyScanner";
 import { Logger } from "../utils/logger";
@@ -20,10 +20,7 @@ export async function activate(context: vscode.ExtensionContext) {
     Logger.info("VulnZap extension is activating...");
 
     // Initialize core security analysis components
-    const codebaseIndexer = new CodebaseIndexer(context);
-    const codebaseSecurityAnalyzer = new CodebaseSecurityAnalyzer(
-      codebaseIndexer
-    );
+    const codebaseSecurityAnalyzer = new CodebaseSecurityAnalyzer();
 
     const diagnosticProvider = new DiagnosticProvider(context);
     const dependencyDiagnosticProvider = new DependencyDiagnosticProvider(
@@ -32,8 +29,7 @@ export async function activate(context: vscode.ExtensionContext) {
     const securityViewProvider = new SecurityViewProvider(context);
     const dependencyScanner = new DependencyScanner(context);
 
-    // Initialize the new indexing system
-    await codebaseIndexer.initialize();
+
 
     // Register the security issues tree view in the sidebar
     vscode.window.registerTreeDataProvider(
@@ -78,37 +74,6 @@ export async function activate(context: vscode.ExtensionContext) {
         // Clear any pending timeouts since we're processing immediately
         if (scanTimeout) {
           clearTimeout(scanTimeout);
-        }
-
-        const enableFastScan = vscode.workspace
-          .getConfiguration("vulnzap")
-          .get("enableFastScan", true);
-
-        // Provide immediate feedback with the new codebase analyzer
-        if (enableFastScan) {
-          const quickResponse = await codebaseSecurityAnalyzer.analyzeCode(
-            document.getText().substring(0, 2000), // Quick scan of first 2000 chars
-            document.uri.fsPath,
-            document.languageId.toString(),
-            0
-          );
-          if (quickResponse.issues.length > 0) {
-            const quickIssues = quickResponse.issues.map((issue) => ({
-              line: issue.startLine - 1,
-              column: issue.startColumn,
-              endLine: issue.endLine - 1,
-              endColumn: issue.endColumn,
-              message: issue.message,
-              severity: codebaseSecurityAnalyzer.convertToVSCodeSeverity(
-                issue.severity
-              ),
-              code: issue.type,
-              suggestion: issue.suggestion,
-              confidence: issue.confidence,
-            }));
-            diagnosticProvider.updateDiagnostics(document, quickIssues);
-            updateStatusBar("quick-scan");
-          }
         }
 
         // Execute comprehensive AI-powered analysis
@@ -389,6 +354,7 @@ export async function activate(context: vscode.ExtensionContext) {
     const loginCommand = vscode.commands.registerCommand(
       "vulnzap.login",
       async () => {
+        const config = vscode.workspace.getConfiguration("vulnzap");
         const port = 54322; // Use a port unlikely to conflict with CLI
         const state = Math.random().toString(36).substring(2);
         const callbackUrl = `http://localhost:${port}/callback`;
@@ -420,7 +386,7 @@ export async function activate(context: vscode.ExtensionContext) {
               const refresh_token = reqUrl.searchParams.get("refresh_token");
               const expires_at = reqUrl.searchParams.get("expires_at");
               const apiKey = reqUrl.searchParams.get("api_key");
-              if (urlState === state && access_token) {
+              if (urlState === state && access_token && apiKey) {
                 // Save session in global state
                 const session = {
                   access_token,
@@ -429,6 +395,8 @@ export async function activate(context: vscode.ExtensionContext) {
                   apiKey,
                 };
                 await context.globalState.update("vulnzapSession", session);
+                await config.update("vulnzapApiKey", apiKey, vscode.ConfigurationTarget.Global);
+                await config.update("vulnzapApiProvider", "vulnzap", vscode.ConfigurationTarget.Global);
                 res.writeHead(200, { "Content-Type": "text/html" });
                 res.end(
                   "<html><body><h2>VulnZap: Login successful!</h2><p>You may now close this tab and return to VS Code.</p></body></html>"
@@ -493,189 +461,7 @@ export async function activate(context: vscode.ExtensionContext) {
       }
     );
 
-    // Vector Indexing Commands
-    const buildIndexCommand = vscode.commands.registerCommand(
-      "vulnzap.buildIndex",
-      async () => {
-        console.log("VulnZap: Build index command called");
 
-        try {
-          await codebaseIndexer.buildIndex();
-        } catch (error) {
-          console.error("Error building index:", error);
-          vscode.window.showErrorMessage(
-            "Error building security index: " + (error as Error).message
-          );
-        }
-      }
-    );
-
-    const indexStatsCommand = vscode.commands.registerCommand(
-      "vulnzap.indexStats",
-      async () => {
-        console.log("VulnZap: Index stats command called");
-
-        const stats = await codebaseIndexer.getIndexStats();
-
-        vscode.window.showInformationMessage(
-          `Index Stats:\n` +
-            `• Total Chunks: ${stats.totalChunks}\n` +
-            `• Total Files: ${stats.totalFiles}\n` +
-            `• Average Chunk Size: ${stats.avgChunkSize}\n` +
-            `• Security Relevant: ${stats.securityRelevantChunks}\n` +
-            `• Last Indexed: ${
-              stats.lastIndexed ? stats.lastIndexed.toLocaleString() : "Never"
-            }\n` +
-            `• Pending Updates: ${stats.pendingUpdates}`
-        );
-      }
-    );
-
-    // Command: Show indexing ignore patterns (for debugging)
-    const showIgnorePatternsCommand = vscode.commands.registerCommand(
-      "vulnzap.showIgnorePatterns",
-      async () => {
-        console.log("VulnZap: Show ignore patterns command called");
-
-        try {
-          // Get ignore pattern info from the codebase indexer
-          const ignoreInfo = codebaseIndexer.getIgnorePatternInfo();
-
-          if (!ignoreInfo) {
-            vscode.window.showErrorMessage(
-              "Unable to retrieve ignore pattern information"
-            );
-            return;
-          }
-
-          const content = [
-            "# VulnZap Indexing Ignore Patterns\n",
-            `**Total Patterns:** ${ignoreInfo.totalPatterns}\n`,
-            "## Default Patterns (Built-in)",
-            "```",
-            ...ignoreInfo.defaultPatterns,
-            "```\n",
-            "## User-Defined Patterns",
-            ignoreInfo.userPatterns.length > 0 ? "```" : "_None configured_",
-            ...ignoreInfo.userPatterns,
-            ignoreInfo.userPatterns.length > 0 ? "```\n" : "\n",
-            "## Gitignore Patterns",
-            ignoreInfo.gitignorePatterns.length > 0
-              ? "```"
-              : "_None found or disabled_",
-            ...ignoreInfo.gitignorePatterns,
-            ignoreInfo.gitignorePatterns.length > 0 ? "```" : "",
-          ].join("\n");
-
-          const doc = await vscode.workspace.openTextDocument({
-            content,
-            language: "markdown",
-          });
-
-          await vscode.window.showTextDocument(doc);
-        } catch (error) {
-          console.error("Error showing ignore patterns:", error);
-          vscode.window.showErrorMessage(
-            "Error retrieving ignore patterns: " + (error as Error).message
-          );
-        }
-      }
-    );
-
-    const clearIndexCommand = vscode.commands.registerCommand(
-      "vulnzap.clearIndex",
-      async () => {
-        console.log("VulnZap: Clear index command called");
-
-        const choice = await vscode.window.showWarningMessage(
-          "Are you sure you want to clear the security index? This will remove all indexed code chunks.",
-          "Clear Index",
-          "Cancel"
-        );
-
-        if (choice === "Clear Index") {
-          try {
-            await codebaseIndexer.clearIndex();
-            vscode.window.showInformationMessage(
-              "Security index cleared successfully"
-            );
-          } catch (error) {
-            console.error("Error clearing index:", error);
-            vscode.window.showErrorMessage(
-              "Error clearing index: " + (error as Error).message
-            );
-          }
-        }
-      }
-    );
-
-    const findSimilarCodeCommand = vscode.commands.registerCommand(
-      "vulnzap.findSimilarCode",
-      async () => {
-        console.log("VulnZap: Find similar code command called");
-
-        const activeEditor = vscode.window.activeTextEditor;
-        if (!activeEditor) {
-          vscode.window.showWarningMessage("No active editor to analyze");
-          return;
-        }
-
-        const selection = activeEditor.selection;
-        const selectedText = activeEditor.document.getText(selection);
-
-        if (!selectedText.trim()) {
-          vscode.window.showWarningMessage(
-            "Please select some code to find similar patterns"
-          );
-          return;
-        }
-
-        try {
-          const results = await codebaseIndexer.findSimilarCode(selectedText, {
-            max_results: 10,
-            similarity_threshold: 0.6,
-          });
-
-          if (results.length === 0) {
-            vscode.window.showInformationMessage(
-              "No similar code patterns found"
-            );
-            return;
-          }
-
-          // Create a new document to show results
-          const resultContent = results
-            .map((result: any, index: number) => {
-              return (
-                `## Result ${index + 1}\n` +
-                `**File:** ${result.filePath}\n` +
-                `**Lines:** ${result.startLine}-${result.endLine}\n` +
-                `**Security Keywords:** ${
-                  result.metadata.hasSecurityKeywords ? "Yes" : "No"
-                }\n` +
-                `**Language:** ${result.language}\n\n` +
-                "```\n" +
-                result.content.substring(0, 500) +
-                (result.content.length > 500 ? "..." : "") +
-                "\n```\n\n"
-              );
-            })
-            .join("---\n\n");
-
-          const doc = await vscode.workspace.openTextDocument({
-            content: `# Similar Code Patterns\n\n${resultContent}`,
-            language: "markdown",
-          });
-
-          await vscode.window.showTextDocument(doc);
-        } catch (error) {
-          console.error("Error finding similar code:", error);
-          vscode.window.showErrorMessage(
-            "Error finding similar code: " + (error as Error).message
-          );
-        }
-      }
-    );
 
     // Dependency Scanning Commands
     const scanDependenciesCommand = vscode.commands.registerCommand(
@@ -1058,6 +844,7 @@ export async function activate(context: vscode.ExtensionContext) {
         }
 
         let issues = await codebaseSecurityAnalyzer.analyzeDocument(document);
+        Logger.info(`Full issues: ${JSON.stringify(issues)}`);
         if (issues.length > maxIssues) {
           issues = issues.slice(0, maxIssues);
           vscode.window.showInformationMessage(
@@ -1155,11 +942,7 @@ export async function activate(context: vscode.ExtensionContext) {
       clearAllIssuesCommand,
       scanWorkspaceCommand,
       loginCommand,
-      buildIndexCommand,
-      indexStatsCommand,
-      showIgnorePatternsCommand,
-      clearIndexCommand,
-      findSimilarCodeCommand,
+
       scanDependenciesCommand,
       forceDependencyScanCommand,
       dependencyCacheStatsCommand,
