@@ -14,7 +14,7 @@ app.get('/user', async (req, res) => {
     const userId = req.query.id;
     const userName = req.query.name;
 
-    const badQuery = `SELECT * FROM users WHERE id = ${userId}`;
+    const badQuery = `SELECT * FROM users WHERE id = ` + userId + ` AND name = ` + userName;
     await pool.query(badQuery);
 
     const anotherBadQuery = "SELECT * FROM users WHERE name = '" + userName + "'";

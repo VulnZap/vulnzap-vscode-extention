@@ -133,7 +133,7 @@ export class CodebaseSecurityAnalyzer {
     ): Promise<SecurityIssue[]> {
         try {
             Logger.debug('API Analysis starting, calling API with raw code...');
-            const aiResponse = await this.getAIAnalysis(code, language);
+            const aiResponse = await this.getAIAnalysis(code, filePath, language);
 
             // log the aiResponse
             Logger.debug('AI Response:', JSON.stringify(aiResponse, null, 2));
@@ -150,13 +150,13 @@ export class CodebaseSecurityAnalyzer {
     /**
      * Get AI analysis response
      */
-    private async getAIAnalysis(code: string, language: string): Promise<any> {
+    private async getAIAnalysis(code: string, filePath: string, language: string): Promise<any> {
         const provider = this.apiProvider.getCurrentProvider();
         if (!provider) {
             throw new Error('No AI provider configured');
         }
 
-        const response = await provider.analyzeCode(code, language);
+        const response = await provider.analyzeCode(code, filePath, language);
         
         // The response is already an AISecurityResponse object, not a string
         if (response && response.issues) {
