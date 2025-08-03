@@ -29,13 +29,93 @@ export interface AISecurityResponse {
   analysisTime?: number;
 }
 
+export interface Vulnerability {
+  uniqueId: string;
+  type: string;
+  severity: 'low' | 'medium' | 'high' | 'critical';
+  title: string;
+  description: string;
+  file: string;
+  line: number;
+  column: number;
+  endLine?: number;
+  endColumn?: number;
+  snippet: string;
+  confidence: number;
+  cwe?: string;
+  remediation?: string;
+}
+
+export interface ScanSummary {
+  totalFiles: number;
+  totalVulnerabilities: number;
+  uniqueVulnerabilities: number;
+  severityBreakdown: {
+    critical: number;
+    high: number;
+    medium: number;
+    low: number;
+  };
+  scanTime: number;
+  llmDeduplicationApplied: boolean;
+}
+
+export interface ScanResult {
+  jobId: string;
+  status: 'pending' | 'running' | 'completed' | 'failed';
+  vulnerabilities: Vulnerability[];
+  summary: ScanSummary;
+  createdAt: string;
+  standaloneVulnerabilities?: ClientVulnerability[]; // Added for new API format
+}
+
+export interface VulnZapResponse {
+  success: boolean;
+  data: ScanResult;
+  error?: string;
+}
+
+export interface ClientVulnerability {
+  uniqueId: string;
+  type: string;
+  severity: 'low' | 'medium' | 'high' | 'critical';
+  title: string;
+  description: string;
+  file: string;
+  line: number;
+  column: number;
+  endLine?: number;
+  endColumn?: number;
+  snippet: string;
+  confidence: number;
+  cwe?: string;
+  remediation?: string;
+  flowMilestones?: Array<{
+    type: 'data_source' | 'data_flow' | 'vulnerability_source';
+    description: string;
+    location: {
+      file: string;
+      line: number;
+      column: number;
+      snippet: string;
+    };
+    riskLevel: string;
+  }>;
+  interFileFlow?: {
+    id: string;
+    description: string;
+    files: string[];
+    steps: number;
+  };
+}
+
 /**
  * Interface that all AI providers must implement for security analysis
  */
 export interface APIProvider {
   name: string;
   displayName: string;
-  analyzeCode(code: string, language: string): Promise<AISecurityResponse>;
+  analyzeCode(code: string, filePath: string, language: string): Promise<AISecurityResponse>;
   isConfigured(): boolean;
   getConfigurationErrors(): string[];
 }
@@ -86,9 +166,8 @@ class LLMLogger {
         },
       };
 
-      const logFileName = `llm-${provider}-${
-        new Date().toISOString().split("T")[0]
-      }.log`;
+      const logFileName = `llm-${provider}-${new Date().toISOString().split("T")[0]
+        }.log`;
       const logFilePath = path.join(this.logDir, logFileName);
 
       const logLine = JSON.stringify(logEntry) + "\n";
@@ -162,6 +241,7 @@ export class VulnZapProvider implements APIProvider {
    */
   async analyzeCode(
     code: string,
+    filePath: string,
     language: string
   ): Promise<AISecurityResponse> {
     const config = vscode.workspace.getConfiguration("vulnzap");
@@ -179,6 +259,7 @@ export class VulnZapProvider implements APIProvider {
       // Use text-based analysis (AST removed for simplicity and speed)
       Logger.debug(`Using text-based analysis for ${language}`);
       const analysisResult = await this.performTextBasedAnalysis(
+        filePath,
         code,
         language,
         apiKey,
@@ -222,6 +303,7 @@ export class VulnZapProvider implements APIProvider {
    * Perform text-based analysis (fast and simple)
    */
   private async performTextBasedAnalysis(
+    filePath: string,
     code: string,
     language: string,
     apiKey: string,
@@ -234,7 +316,7 @@ export class VulnZapProvider implements APIProvider {
       {
         files: [
           {
-            name: "code_to_analyze",
+            name: filePath,
             content: code,
             language: language
           }
@@ -246,7 +328,6 @@ export class VulnZapProvider implements APIProvider {
           "Content-Type": "application/json",
           "User-Agent": "VulnZap-VSCode-Extension",
         },
-        timeout: 30000,
       }
     );
 
@@ -270,40 +351,18 @@ export class VulnZapProvider implements APIProvider {
               "Content-Type": "application/json",
               "User-Agent": "VulnZap-VSCode-Extension",
             },
-            timeout: 10000,
+            timeout: 60000, // 60 seconds
           }
         );
 
         const jobData = jobResponse.data?.data;
-        if (jobData?.status === "COMPLETED") {
+        if (jobData?.status.toLowerCase() === "completed") {
           // Step 3: Get the result ID and fetch detailed results
-          const resultId = jobData?.scanResults[0]?.id;
-          if (!resultId) {
-            Logger.error("Job completed but no result ID found", undefined, "Job data:", JSON.stringify(jobData, null, 2));
-            throw new Error("No result ID returned from completed job");
-          }
-
-          Logger.debug(`Job completed successfully. ResultId: ${resultId}`);
-
-          // Fetch the detailed scan results
-          const resultsResponse = await axios.get(
-            `${apiUrl}/api/scan/results/${resultId}`,
-            {
-              headers: {
-                "x-api-key": `${apiKey}`,
-                "Content-Type": "application/json",
-                "User-Agent": "VulnZap-VSCode-Extension",
-              },
-              timeout: 10000,
-            }
-          );
-
-          const resultsData = resultsResponse.data?.data;
+          const resultsData: VulnZapResponse = jobResponse.data;
           if (!resultsData) {
             throw new Error("No results data returned from results endpoint");
           }
 
-          Logger.debug(`Successfully fetched scan results for resultId: ${resultId}`);
           Logger.debug(`Results data structure:`, JSON.stringify(resultsData, null, 2));
 
           // Log the interaction for debugging and analytics
@@ -317,13 +376,12 @@ export class VulnZapProvider implements APIProvider {
               fastScan,
               approach: "text-based",
               jobId,
-              resultId,
               pollingAttempts: attempt + 1,
             }
           );
 
-          return this.validateAndNormalizeResponse(resultsData);
-        } else if (jobData?.status === "FAILED") {
+          return this.normalizeResponse(resultsData);
+        } else if (jobData?.status.toLowerCase() === "failed") {
           throw new Error(`Scan job failed: ${jobData.error || "Unknown error"}`);
         }
 
@@ -341,85 +399,77 @@ export class VulnZapProvider implements APIProvider {
   }
 
   /**
-   * Validates and normalizes the API response
+   * Normalizes the response from the VulnZap API
+   * @param data - The response from the VulnZap API
+   * @returns The normalized response
    */
-  private validateAndNormalizeResponse(data: any): AISecurityResponse {
+  private normalizeResponse(data: VulnZapResponse): AISecurityResponse {
     try {
-      // Handle different response formats from the API
-      let parsedData = data;
+      // Combine both vulnerabilities and standaloneVulnerabilities
+      const vulns: any[] = [
+        ...(data.data.vulnerabilities || []),
+        ...(data.data.standaloneVulnerabilities || [])
+      ];
 
-      // Process the new results endpoint response format
-      if (parsedData.results && Array.isArray(parsedData.results) && parsedData.results.length > 0) {
-        const fileResult = parsedData.results[0];
-        const vulnerabilities = fileResult.vulnerabilities || [];
-
-        // Get summary information
-        const summary = parsedData.summary || {};
-        const totalVulnerabilities = summary.totalVulnerabilities || vulnerabilities.length;
-        const severityBreakdown = summary.severityBreakdown || {};
-
-        let summaryText = "Security analysis completed";
-        let overallRisk: "low" | "medium" | "high" | "critical" = "low";
-
-        if (totalVulnerabilities > 0) {
-          summaryText = `Found ${totalVulnerabilities} security issues`;
-
-          // Determine overall risk based on severity breakdown
-          if (severityBreakdown.critical > 0) {
-            overallRisk = "critical";
-          } else if (severityBreakdown.high > 0) {
-            overallRisk = "high";
-          } else if (severityBreakdown.medium > 0) {
-            overallRisk = "medium";
-          }
-        } else {
-          summaryText = "No security vulnerabilities detected";
-        }
-
-        // Convert vulnerabilities to the expected format
-        // API returns 1-based line/column numbers, convert to 0-based for VS Code
-        const issues = vulnerabilities.map((vuln: any) => {
-          const startRow = Number(vuln.location?.start?.row) || 1;
-          const startCol = Number(vuln.location?.start?.column) || 1;
-          const endRow = Number(vuln.location?.end?.row) || startRow;
-          const endCol = Number(vuln.location?.end?.column) || startCol;
-
-          const issue = {
-            line: Math.max(0, startRow - 1), // Convert to 0-based
-            column: Math.max(0, startCol - 1), // Convert to 0-based
-            endLine: Math.max(0, endRow - 1), // Convert to 0-based
-            endColumn: Math.max(0, endCol - 1), // Convert to 0-based
-            message: String(vuln.description || vuln.title || "Security issue detected"),
-            severity: this.mapSeverityToVSCode(vuln.severity),
-            code: String(vuln.type || "SECURITY_ISSUE"),
-            suggestion: vuln.remediation ? String(vuln.remediation) : undefined,
-            confidence: Math.min(100, Math.max(0, Math.round((Number(vuln.confidence) || 0.5) * 100))),
-            cve: vuln.cwe ? [vuln.cwe] : [],
-            searchQuery: vuln.type ? String(vuln.type) : undefined,
-          };
-
-          Logger.debug(`Converted vulnerability: ${vuln.type} at line ${startRow}:${startCol}-${endRow}:${endCol} -> ${issue.line}:${issue.column}-${issue.endLine}:${issue.endColumn}`);
-
-          return issue;
-        });
-
+      if (vulns.length === 0) {
+        Logger.warn("No results found in VulnZap scan response.");
         return {
-          issues,
-          summary: summaryText,
-          overallRisk,
-          isPartial: false,
-          analysisTime: parsedData.job?.completedAt && parsedData.job?.startedAt ?
-            new Date(parsedData.job.completedAt).getTime() - new Date(parsedData.job.startedAt).getTime() :
-            undefined,
+          issues: [],
+          summary: "No security vulnerabilities detected",
+          overallRisk: "low",
         };
       }
 
-      // Fallback to empty response if the expected format is not found
-      Logger.warn("Unexpected API response format:", JSON.stringify(parsedData, null, 2));
+      // Determine overall risk
+      let overallRisk: "low" | "medium" | "high" | "critical" = "low";
+      if (data.data.summary?.severityBreakdown) {
+        const breakdown = data.data.summary.severityBreakdown;
+        if (breakdown.critical > 0) overallRisk = "critical";
+        else if (breakdown.high > 0) overallRisk = "high";
+        else if (breakdown.medium > 0) overallRisk = "medium";
+      }
+
+      const issues = vulns.map((vuln: any) => {
+        // Support both old and new formats
+        const start = vuln.location?.start?.row ?? vuln.line ?? 1;
+        const end = vuln.location?.end?.row ?? vuln.endLine ?? start;
+        const startCol = vuln.location?.start?.column ?? vuln.column ?? 1;
+        const endCol = vuln.location?.end?.column ?? vuln.endColumn ?? startCol;
+        const snippet = vuln.location?.snippet ?? vuln.snippet ?? vuln.codeSnippet ?? "";
+
+        return {
+          line: Math.max(0, start - 1),
+          column: Math.max(0, startCol - 1),
+          endLine: Math.max(0, end - 1),
+          endColumn: Math.max(0, endCol - 1),
+          message: vuln.description || vuln.title || "Security issue detected",
+          severity: this.mapSeverityToVSCode(vuln.severity),
+          code: vuln.type || vuln.vulnerabilityId || "SECURITY_ISSUE",
+          suggestion: vuln.remediation,
+          confidence: Math.min(100, Math.max(0, Math.round((vuln.confidence ?? 0.5) * 100))),
+          cve: vuln.cwe ? [vuln.cwe] : [],
+          searchQuery: vuln.type,
+          // New fields for ClientVulnerability
+          flowMilestones: vuln.flowMilestones,
+          interFileFlow: vuln.interFileFlow,
+        };
+      });
+
+      const summaryText =
+        vulns.length > 0
+          ? `Found ${vulns.length} security issue${vulns.length > 1 ? "s" : ""}`
+          : "No security vulnerabilities detected";
+
       return {
-        issues: [],
-        summary: "No security analysis results available",
-        overallRisk: "low",
+        issues,
+        summary: summaryText,
+        overallRisk,
+        isPartial: false,
+        analysisTime:
+          data.data.createdAt && data.data.createdAt
+            ? new Date(data.data.createdAt).getTime() -
+              new Date(data.data.createdAt).getTime()
+            : undefined,
       };
     } catch (error) {
       Logger.error("Error validating API response:", error as Error);
@@ -511,12 +561,13 @@ export class APIProviderManager {
    */
   async analyzeCode(
     code: string,
+    filePath: string,
     language: string
   ): Promise<AISecurityResponse> {
     if (!this.provider.isConfigured()) {
       throw new Error("VulnZap API is not configured");
     }
 
-    return this.provider.analyzeCode(code, language);
+    return this.provider.analyzeCode(code, filePath, language);
   }
 }

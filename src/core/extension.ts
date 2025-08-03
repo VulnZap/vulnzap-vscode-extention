@@ -93,17 +93,6 @@ export async function activate(context: vscode.ExtensionContext) {
       }
     );
 
-    // Listen for editor changes to scan newly opened files
-    const activeEditorChangeListener =
-      vscode.window.onDidChangeActiveTextEditor(async (editor) => {
-        if (!isEnabled || !editor) return;
-
-        const document = editor.document;
-        if (!isSupportedLanguage(document.languageId)) return;
-
-        await scanDocument(document);
-      });
-
     // Register all extension commands
     Logger.info("Registering commands...");
 
@@ -1023,7 +1012,6 @@ export async function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(
       statusBarItem,
       documentSaveListener,
-      activeEditorChangeListener,
       enableCommand,
       disableCommand,
       toggleCommand,
