@@ -16,7 +16,10 @@ interface SecurityIssue {
   similarVulnerabilities?: any[];
 }
 import { APIProviderManager } from "./apiProviders";
-import { VulnerabilityInfo, DependencyScanResult } from "../dependencies/dependencyCache";
+import {
+  VulnerabilityInfo,
+  DependencyScanResult,
+} from "../dependencies/dependencyCache";
 
 export interface SecurityTreeItem {
   label: string;
@@ -48,7 +51,8 @@ export class SecurityViewProvider
   > = this._onDidChangeTreeData.event;
 
   private securityIssues: Map<string, SecurityIssue[]> = new Map();
-  private dependencyVulnerabilities: Map<string, DependencyScanResult> = new Map();
+  private dependencyVulnerabilities: Map<string, DependencyScanResult> =
+    new Map();
   private scanResults: Map<
     string,
     { timestamp: Date; issueCount: number; isEnabled: boolean }
@@ -105,31 +109,116 @@ export class SecurityViewProvider
   private getRootItems(): SecurityTreeItem[] {
     const items: SecurityTreeItem[] = [];
 
-    // Configuration Section
-    items.push(this.getConfigurationSection());
+    // Check if user is logged in
+    const session = this.context.globalState.get("vulnzapSession");
 
-    // Statistics Section
-    items.push(this.getStatisticsSection());
+    if (!session) {
+      // User is not logged in - show only login interface
+      items.push(this.getLoginOnlySection());
+    } else {
+      // User is logged in - show full interface
+      // Configuration Section
+      items.push(this.getConfigurationSection());
 
-    // Dependency Vulnerabilities Section
-    if (this.hasDependencyVulnerabilities()) {
-      items.push(this.getDependencyVulnerabilitiesSection());
+      // Statistics Section
+      items.push(this.getStatisticsSection());
+
+      // Dependency Vulnerabilities Section
+      if (this.hasDependencyVulnerabilities()) {
+        items.push(this.getDependencyVulnerabilitiesSection());
+      }
+
+      // Issues by Severity Section
+      if (this.hasAnyIssues()) {
+        items.push(this.getIssuesBySeveritySection());
+      }
+
+      // Issues by File Section
+      if (this.hasAnyIssues()) {
+        items.push(this.getIssuesByFileSection());
+      }
+
+      // Recent Scans Section
+      items.push(this.getRecentScansSection());
     }
-
-    // Issues by Severity Section
-    if (this.hasAnyIssues()) {
-      items.push(this.getIssuesBySeveritySection());
-    }
-
-    // Issues by File Section
-    if (this.hasAnyIssues()) {
-      items.push(this.getIssuesByFileSection());
-    }
-
-    // Recent Scans Section
-    items.push(this.getRecentScansSection());
 
     return items;
+  }
+
+  private getLoginOnlySection(): SecurityTreeItem {
+    return {
+      label: "Welcome!",
+      iconPath: new vscode.ThemeIcon("robot"),
+      collapsibleState: vscode.TreeItemCollapsibleState.Expanded,
+      contextValue: "loginOnlySection",
+      children: [
+        {
+          label: "Please sign in below.",
+          iconPath: new vscode.ThemeIcon("info"),
+          contextValue: "loginPrompt",
+          tooltip: "Authentication required to access VulnZap features",
+        },
+        {
+          label: "Sign In",
+          description: "🔑 Click to authenticate",
+          iconPath: new vscode.ThemeIcon(
+            "account",
+            new vscode.ThemeColor("button.background")
+          ),
+          contextValue: "loginButton",
+          command: {
+            command: "vulnzap.login",
+            title: "Sign In",
+          },
+          tooltip: "Sign in with your VulnZap account",
+        },
+        {
+          label: "Augment Features:",
+          iconPath: new vscode.ThemeIcon("star-full"),
+          collapsibleState: vscode.TreeItemCollapsibleState.Expanded,
+          contextValue: "featuresList",
+          children: [
+            {
+              label: "• AI-Powered Security Analysis",
+              iconPath: new vscode.ThemeIcon("shield"),
+              contextValue: "feature",
+              tooltip:
+                "Advanced vulnerability detection using artificial intelligence",
+            },
+            {
+              label: "• Real-time Code Scanning",
+              iconPath: new vscode.ThemeIcon("search"),
+              contextValue: "feature",
+              tooltip: "Continuous security monitoring as you code",
+            },
+            {
+              label: "• Dependency Vulnerability Checks",
+              iconPath: new vscode.ThemeIcon("package"),
+              contextValue: "feature",
+              tooltip: "Automated scanning of third-party dependencies",
+            },
+            {
+              label: "• Smart Remediation Suggestions",
+              iconPath: new vscode.ThemeIcon("lightbulb"),
+              contextValue: "feature",
+              tooltip: "Intelligent fixes and security improvements",
+            },
+          ],
+        },
+        {
+          label: "Need an account?",
+          description: "Create one at vulnzap.com",
+          iconPath: new vscode.ThemeIcon("link-external"),
+          contextValue: "signupPrompt",
+          command: {
+            command: "vscode.open",
+            title: "Open VulnZap Website",
+            arguments: [vscode.Uri.parse("https://vulnzap.com")],
+          },
+          tooltip: "Visit vulnzap.com to create a new account",
+        },
+      ],
+    };
   }
 
   private getConfigurationSection(): SecurityTreeItem {
@@ -142,7 +231,7 @@ export class SecurityViewProvider
     const session = this.context.globalState.get("vulnzapSession");
     const configItems: SecurityTreeItem[] = [];
 
-    // Add login button if not logged in
+    // Add login/logout button based on session state
     if (!session) {
       configItems.push({
         label: "Log In to VulnZap",
@@ -152,6 +241,18 @@ export class SecurityViewProvider
           command: "vulnzap.login",
           title: "Log In to VulnZap",
         },
+      });
+    } else {
+      configItems.push({
+        label: "Sign Out of VulnZap",
+        description: "Currently signed in",
+        iconPath: new vscode.ThemeIcon("sign-out"),
+        contextValue: "logout",
+        command: {
+          command: "vulnzap.logout",
+          title: "Sign Out of VulnZap",
+        },
+        tooltip: "Sign out of your VulnZap account",
       });
     }
 
@@ -170,9 +271,7 @@ export class SecurityViewProvider
       },
       {
         label: `VulnZap API: ${isConfigured ? "Configured" : "Not Configured"}`,
-        description: isConfigured
-          ? "\u2713 Ready"
-          : "\u26a0 Configure API",
+        description: isConfigured ? "\u2713 Ready" : "\u26a0 Configure API",
         iconPath: isConfigured
           ? new vscode.ThemeIcon("check")
           : new vscode.ThemeIcon("warning"),
@@ -534,11 +633,22 @@ export class SecurityViewProvider
 
   private getDependencyVulnerabilitiesSection(): SecurityTreeItem {
     const allVulns = Array.from(this.dependencyVulnerabilities.values());
-    const totalVulns = allVulns.reduce((sum, result) => sum + result.vulnerabilities.length, 0);
-    const criticalCount = allVulns.reduce((sum, result) => 
-      sum + result.vulnerabilities.filter(v => v.severity === 'critical').length, 0);
-    const highCount = allVulns.reduce((sum, result) => 
-      sum + result.vulnerabilities.filter(v => v.severity === 'high').length, 0);
+    const totalVulns = allVulns.reduce(
+      (sum, result) => sum + result.vulnerabilities.length,
+      0
+    );
+    const criticalCount = allVulns.reduce(
+      (sum, result) =>
+        sum +
+        result.vulnerabilities.filter((v) => v.severity === "critical").length,
+      0
+    );
+    const highCount = allVulns.reduce(
+      (sum, result) =>
+        sum +
+        result.vulnerabilities.filter((v) => v.severity === "high").length,
+      0
+    );
 
     const children: SecurityTreeItem[] = [];
 
@@ -577,31 +687,40 @@ export class SecurityViewProvider
 
     // Add severity groups (only critical and high for inline display)
     for (const [severity, vulns] of vulnsBySeverity) {
-      if (severity === 'critical' || severity === 'high') {
+      if (severity === "critical" || severity === "high") {
         children.push({
-          label: `${severity.charAt(0).toUpperCase() + severity.slice(1)} (${vulns.length})`,
-          iconPath: severity === 'critical' 
-            ? new vscode.ThemeIcon("error") 
-            : new vscode.ThemeIcon("warning"),
+          label: `${severity.charAt(0).toUpperCase() + severity.slice(1)} (${
+            vulns.length
+          })`,
+          iconPath:
+            severity === "critical"
+              ? new vscode.ThemeIcon("error")
+              : new vscode.ThemeIcon("warning"),
           collapsibleState: vscode.TreeItemCollapsibleState.Collapsed,
           contextValue: "dependencySeverityGroup",
-          children: vulns.map(vuln => ({
+          children: vulns.map((vuln) => ({
             label: `${vuln.packageName}@${vuln.packageVersion}`,
-            description: vuln.fixedIn ? `Fix: ${vuln.fixedIn}` : "Update needed",
-            tooltip: `${vuln.description}\n\nRecommendation: ${vuln.recommendation}${vuln.cveId ? `\nCVE: ${vuln.cveId}` : ''}`,
+            description: vuln.fixedIn
+              ? `Fix: ${vuln.fixedIn}`
+              : "Update needed",
+            tooltip: `${vuln.description}\n\nRecommendation: ${
+              vuln.recommendation
+            }${vuln.cveId ? `\nCVE: ${vuln.cveId}` : ""}`,
             iconPath: new vscode.ThemeIcon("bug"),
             contextValue: "dependencyVulnerability",
             vulnerability: vuln,
-            command: vuln.fixedIn ? {
-              command: "vulnzap.updateDependencyToVersion",
-              title: `Update to ${vuln.fixedIn}`,
-              arguments: [vuln.packageName, vuln.fixedIn]
-            } : {
-              command: "vulnzap.showUpdateCommand",
-              title: `Show update command for ${vuln.packageName}`,
-              arguments: [vuln.packageName]
-            }
-          }))
+            command: vuln.fixedIn
+              ? {
+                  command: "vulnzap.updateDependencyToVersion",
+                  title: `Update to ${vuln.fixedIn}`,
+                  arguments: [vuln.packageName, vuln.fixedIn],
+                }
+              : {
+                  command: "vulnzap.showUpdateCommand",
+                  title: `Show update command for ${vuln.packageName}`,
+                  arguments: [vuln.packageName],
+                },
+          })),
         });
       }
     }

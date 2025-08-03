@@ -1,0 +1,284 @@
+body {
+  font-family: var(--vscode-font-family);
+  background-color: var(--vscode-editor-background);
+  color: var(--vscode-editor-foreground);
+  margin: 0;
+  padding: 20px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+  box-sizing: border-box;
+}
+
+#login-container {
+  width: 100%;
+  max-width: 400px;
+  min-width: 280px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: 20px;
+  padding: 20px;
+  box-sizing: border-box;
+}
+
+.login-header {
+  margin-bottom: 0;
+  width: 100%;
+}
+
+.logo-icon {
+  color: var(--vscode-textLink-foreground);
+  margin-bottom: 16px;
+  display: flex;
+  justify-content: center;
+}
+
+.logo-svg {
+  width: 60px;
+  height: 60px;
+  transform: translateY(-8px);
+  filter: brightness(1.1);
+  animation: float 3s ease-in-out infinite;
+}
+
+@keyframes float {
+  0%,
+  100% {
+    transform: translateY(-8px);
+  }
+  50% {
+    transform: translateY(-16px);
+  }
+}
+
+.login-header h1 {
+  font-size: 32px;
+  font-weight: 600;
+  margin: 0 0 8px 0;
+  color: var(--vscode-editor-foreground);
+}
+
+.login-header p {
+  font-size: 16px;
+  color: var(--vscode-descriptionForeground);
+  margin: 0 0 30px 0;
+}
+
+.login-form {
+  margin-bottom: 0;
+  width: 100%;
+}
+
+.signin-button {
+  background-color: var(--vscode-button-background);
+  color: var(--vscode-button-foreground);
+  border: none;
+  border-radius: 6px;
+  padding: 12px 24px;
+  font-size: 16px;
+  font-weight: 500;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  transition: background-color 0.2s ease;
+  min-width: 120px;
+  justify-content: center;
+}
+
+.signin-button:hover {
+  background-color: var(--vscode-button-hoverBackground);
+}
+
+.signin-button:active {
+  background-color: var(--vscode-button-hoverBackground);
+  transform: translateY(1px);
+}
+
+.button-icon {
+  font-size: 18px;
+}
+
+.features-section {
+  text-align: left;
+  margin-bottom: 30px;
+  padding: 20px;
+  background-color: var(--vscode-editor-inactiveSelectionBackground);
+  border-radius: 8px;
+  border: 1px solid var(--vscode-widget-border);
+}
+
+.features-section h3 {
+  margin: 0 0 16px 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--vscode-editor-foreground);
+}
+
+.features-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.features-list li {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 16px;
+  padding: 8px 0;
+}
+
+.features-list li:last-child {
+  margin-bottom: 0;
+}
+
+.feature-icon {
+  font-size: 20px;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.features-list li div {
+  flex: 1;
+}
+
+.features-list li strong {
+  display: block;
+  font-weight: 600;
+  color: var(--vscode-editor-foreground);
+  margin-bottom: 4px;
+  font-size: 14px;
+}
+
+.features-list li p {
+  margin: 0;
+  font-size: 12px;
+  color: var(--vscode-descriptionForeground);
+  line-height: 1.4;
+}
+
+.signup-section {
+  font-size: 14px;
+  color: var(--vscode-descriptionForeground);
+}
+
+.signup-section a {
+  color: var(--vscode-textLink-foreground);
+  text-decoration: none;
+}
+
+.signup-section a:hover {
+  text-decoration: underline;
+}
+
+/* Large screens */
+@media (min-width: 1200px) {
+  #login-container {
+    max-width: 450px;
+  }
+
+  .login-header h1 {
+    font-size: 36px;
+  }
+
+  .login-header p {
+    font-size: 18px;
+  }
+
+  .logo-svg {
+    width: 70px;
+    height: 70px;
+  }
+
+  .signin-button {
+    padding: 14px 32px;
+    font-size: 18px;
+  }
+}
+
+/* Very tall screens - ensure proper centering */
+@media (min-height: 800px) {
+  body {
+    align-items: center;
+  }
+}
+
+/* Tablet and smaller desktop */
+@media (max-width: 768px) {
+  #login-container {
+    max-width: 350px;
+    padding: 15px;
+  }
+
+  .login-header h1 {
+    font-size: 28px;
+  }
+
+  .signin-button {
+    padding: 14px 28px;
+    font-size: 17px;
+  }
+}
+
+/* Mobile landscape */
+@media (max-width: 480px) {
+  body {
+    padding: 15px;
+  }
+
+  #login-container {
+    min-width: 260px;
+    padding: 15px;
+    gap: 16px;
+  }
+
+  .logo-svg {
+    width: 55px;
+    height: 55px;
+  }
+
+  .login-header h1 {
+    font-size: 26px;
+  }
+
+  .login-header p {
+    font-size: 15px;
+  }
+}
+
+/* Mobile portrait */
+@media (max-width: 350px) {
+  body {
+    padding: 10px;
+  }
+
+  #login-container {
+    min-width: 240px;
+    padding: 12px;
+    gap: 14px;
+  }
+
+  .logo-svg {
+    width: 50px;
+    height: 50px;
+  }
+
+  .login-header h1 {
+    font-size: 24px;
+  }
+
+  .login-header p {
+    font-size: 14px;
+    margin: 0 0 20px 0;
+  }
+
+  .signin-button {
+    padding: 12px 20px;
+    font-size: 15px;
+  }
+}

@@ -4,6 +4,7 @@ import { DiagnosticProvider } from "../providers/diagnosticProvider";
 import { DependencyDiagnosticProvider } from "../providers/dependencyDiagnosticProvider";
 import { APIProviderManager } from "../providers/apiProviders";
 import { SecurityViewProvider } from "../providers/securityViewProvider";
+import { LoginWebviewProvider } from "../webview/LoginWebviewProvider";
 
 import { CodebaseSecurityAnalyzer } from "../security/codebaseSecurityAnalyzer";
 import { DependencyScanner } from "../dependencies/dependencyScanner";
@@ -27,15 +28,26 @@ export async function activate(context: vscode.ExtensionContext) {
       context
     );
     const securityViewProvider = new SecurityViewProvider(context);
+    const loginWebviewProvider = new LoginWebviewProvider(
+      context.extensionUri,
+      context
+    );
     const dependencyScanner = new DependencyScanner(context);
-
-
 
     // Register the security issues tree view in the sidebar
     vscode.window.registerTreeDataProvider(
       "vulnzap.securityView",
       securityViewProvider
     );
+
+    // Register the login webview provider
+    vscode.window.registerWebviewViewProvider(
+      LoginWebviewProvider.viewType,
+      loginWebviewProvider
+    );
+
+    // Set initial context based on login status
+    updateLoginContext();
 
     // Connect diagnostic providers with security view for synchronized updates
     diagnosticProvider.setSecurityViewProvider(securityViewProvider);
@@ -395,8 +407,16 @@ export async function activate(context: vscode.ExtensionContext) {
                   apiKey,
                 };
                 await context.globalState.update("vulnzapSession", session);
-                await config.update("vulnzapApiKey", apiKey, vscode.ConfigurationTarget.Global);
-                await config.update("vulnzapApiProvider", "vulnzap", vscode.ConfigurationTarget.Global);
+                await config.update(
+                  "vulnzapApiKey",
+                  apiKey,
+                  vscode.ConfigurationTarget.Global
+                );
+                await config.update(
+                  "vulnzapApiProvider",
+                  "vulnzap",
+                  vscode.ConfigurationTarget.Global
+                );
                 res.writeHead(200, { "Content-Type": "text/html" });
                 res.end(
                   "<html><body><h2>VulnZap: Login successful!</h2><p>You may now close this tab and return to VS Code.</p></body></html>"
@@ -442,8 +462,10 @@ export async function activate(context: vscode.ExtensionContext) {
           // 4. Wait for callback
           await serverPromise;
           vscode.window.showInformationMessage("VulnZap: Login successful!");
-          // 5. Refresh the security view
-          vscode.commands.executeCommand("vulnzap.refreshSecurityView");
+          // 5. Update context and refresh views
+          updateLoginContext();
+          securityViewProvider.refresh();
+          updateStatusBar(); // Update status bar to show logged in state
         } catch (err: any) {
           vscode.window.showErrorMessage(
             "VulnZap: Login failed: " + err.message
@@ -461,7 +483,48 @@ export async function activate(context: vscode.ExtensionContext) {
       }
     );
 
+    // Register the logout command
+    const logoutCommand = vscode.commands.registerCommand(
+      "vulnzap.logout",
+      async () => {
+        const confirm = await vscode.window.showWarningMessage(
+          "Are you sure you want to sign out of VulnZap?",
+          "Sign Out",
+          "Cancel"
+        );
 
+        if (confirm === "Sign Out") {
+          // Clear session from global state
+          await context.globalState.update("vulnzapSession", undefined);
+
+          // Clear API configuration
+          const config = vscode.workspace.getConfiguration("vulnzap");
+          await config.update(
+            "vulnzapApiKey",
+            "",
+            vscode.ConfigurationTarget.Global
+          );
+          await config.update(
+            "vulnzapApiProvider",
+            "",
+            vscode.ConfigurationTarget.Global
+          );
+
+          // Clear all issues and refresh views
+          diagnosticProvider.clearAll();
+          dependencyDiagnosticProvider.clearAll();
+          securityViewProvider.clearAllSecurityIssues();
+          securityViewProvider.clearDependencyVulnerabilities();
+          updateLoginContext();
+          securityViewProvider.refresh();
+          updateStatusBar(); // Update status bar to show login required
+
+          vscode.window.showInformationMessage(
+            "Successfully signed out of VulnZap"
+          );
+        }
+      }
+    );
 
     // Dependency Scanning Commands
     const scanDependenciesCommand = vscode.commands.registerCommand(
@@ -900,8 +963,35 @@ export async function activate(context: vscode.ExtensionContext) {
       return supportedLanguages.includes(languageId);
     }
 
+    function updateLoginContext() {
+      const session = context.globalState.get("vulnzapSession");
+      vscode.commands.executeCommand(
+        "setContext",
+        "vulnzap.loggedIn",
+        !!session
+      );
+      vscode.commands.executeCommand(
+        "setContext",
+        "vulnzap.notLoggedIn",
+        !session
+      );
+    }
+
     function updateStatusBar(status: string = "") {
-      if (isEnabled) {
+      // Check if user is logged in
+      const session = context.globalState.get("vulnzapSession");
+
+      if (!session) {
+        // User not logged in
+        statusBarItem.text = "$(shield) VulnZap: Sign In Required";
+        statusBarItem.tooltip =
+          "Click to sign in to VulnZap and start security analysis.";
+        statusBarItem.backgroundColor = new vscode.ThemeColor(
+          "statusBarItem.warningBackground"
+        );
+        statusBarItem.command = "vulnzap.login";
+      } else if (isEnabled) {
+        // User logged in and enabled
         if (status === "quick-scan") {
           statusBarItem.text = "$(shield) Security: Quick Scan";
           statusBarItem.tooltip =
@@ -917,12 +1007,15 @@ export async function activate(context: vscode.ExtensionContext) {
             "Security review is enabled with text-based analysis. Click to disable.";
           statusBarItem.backgroundColor = undefined;
         }
+        statusBarItem.command = "vulnzap.toggle";
       } else {
+        // User logged in but disabled
         statusBarItem.text = "$(shield) Security: OFF";
         statusBarItem.tooltip = "Security review is disabled. Click to enable.";
         statusBarItem.backgroundColor = new vscode.ThemeColor(
           "statusBarItem.warningBackground"
         );
+        statusBarItem.command = "vulnzap.toggle";
       }
     }
 
@@ -942,6 +1035,7 @@ export async function activate(context: vscode.ExtensionContext) {
       clearAllIssuesCommand,
       scanWorkspaceCommand,
       loginCommand,
+      logoutCommand,
 
       scanDependenciesCommand,
       forceDependencyScanCommand,

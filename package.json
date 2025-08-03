@@ -96,6 +96,12 @@
         "category": "Security"
       },
       {
+        "command": "vulnzap.logout",
+        "title": "Sign Out of VulnZap",
+        "category": "Security",
+        "icon": "$(sign-out)"
+      },
+      {
         "command": "vulnzap.buildIndex",
         "title": "Build Security Index",
         "category": "Security",
@@ -186,9 +192,15 @@
     "views": {
       "vulnzap-security": [
         {
+          "id": "vulnzap.loginView",
+          "name": "Login",
+          "when": "vulnzap.notLoggedIn",
+          "type": "webview"
+        },
+        {
           "id": "vulnzap.securityView",
           "name": "Security Analysis",
-          "when": "true"
+          "when": "vulnzap.loggedIn"
         }
       ]
     },
@@ -281,6 +293,10 @@
         {
           "command": "vulnzap.showOutputChannel",
           "when": "true"
+        },
+        {
+          "command": "vulnzap.logout",
+          "when": "true"
         }
       ],
       "view/title": [
@@ -366,6 +382,11 @@
           "type": "string",
           "default": "https://api.vulnzap.com",
           "description": "VulnZap API base URL"
+        },
+        "vulnzap.vulnzapApiProvider": {
+          "type": "string",
+          "default": "",
+          "description": "Selected API provider for VulnZap analysis"
         },
         "vulnzap.enableAIAnalysis": {
           "type": "boolean",
