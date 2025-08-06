@@ -1,0 +1,212 @@
+{
+  "success": true,
+  "data": {
+    "results": {
+      "vulnerabilities": [
+        {
+          "file": "/Users/anirudh/Desktop/vulnzap-engine/training/vulnshop-api/src/services/auth.js",
+          "language": "javascript",
+          "metadata": {
+            "performance": {
+              "totalTime": 83150,
+              "cfgBuildTime": 2,
+              "cpgBuildTime": 7,
+              "dfgBuildTime": 4,
+              "taintAnalysisTime": 83130,
+              "contextResolveTime": 7
+            }
+          },
+          "scanTime": 83166,
+          "linesOfCode": 171,
+          "taintVulnerabilities": [
+            {
+              "id": "cud692120xibyd1tovqv",
+              "cwe": "CWE-20",
+              "name": "Data Flow Vulnerability",
+              "sink": {
+                "type": "template_literal",
+                "nodeId": "cpg_node_85",
+                "category": "injection",
+                "filePath": "/tmp/tmp-7-c2DGU9LlMmqy-.js",
+                "lineNumber": 21,
+                "codeSnippet": "const expectedToken = `admin_${requestedRole}_${new Date().getDate()}`;\n      \n      if (token === expectedToken || token === 'master_admin_override') {",
+                "columnNumber": 6
+              },
+              "type": "hardcoded_credentials",
+              "owasp": "A06:2021 – Vulnerable and Outdated Components",
+              "title": "Predictable Token Generation and Hardcoded Bypass",
+              "source": {
+                "type": "hardcoded_credential",
+                "nodeId": "cpg_node_89",
+                "category": "hardcoded_credentials",
+                "filePath": "/tmp/tmp-7-c2DGU9LlMmqy-.js",
+                "lineNumber": 13,
+                "codeSnippet": "(token, requestedRole)",
+                "columnNumber": 26
+              },
+              "category": "intra-file",
+              "language": "javascript",
+              "metadata": {
+                "requestId": "scan-1754431008799-0.8275541952466676",
+                "pathLength": 2,
+                "isInterFile": false,
+                "analysisType": "structured_taint_flow",
+                "sinkCategory": "injection",
+                "sourceCategory": "hardcoded_credentials"
+              },
+              "severity": "High",
+              "framework": "nodejs",
+              "confidence": 0.8,
+              "sanitizers": [],
+              "description": "The application generates a predictable token (`expectedToken`) using a combination of 'admin_', `requestedRole`, and the current date. This makes the token easily guessable and can lead to unauthorized access if the `requestedRole` is known or can be enumerated. Additionally, a 'master_admin_override' token is hardcoded, allowing a bypass of the authentication mechanism.",
+              "taintFlowPath": [
+                {
+                  "nodeId": "cpg_node_89",
+                  "filePath": "/tmp/tmp-7-c2DGU9LlMmqy-.js",
+                  "flowType": "source",
+                  "operation": "`admin_${requestedRole}_${new Date().getDate()}`",
+                  "lineNumber": 21,
+                  "stepNumber": 1,
+                  "codeSnippet": "`admin_${requestedRole}_${new Date().getDate()}`",
+                  "description": "Source: Data enters the system via user_input",
+                  "columnNumber": 28,
+                  "contextLines": {
+                    "after": [],
+                    "before": [],
+                    "current": "`admin_${requestedRole}_${new Date().getDate()}`"
+                  }
+                },
+                {
+                  "nodeId": "cpg_node_85",
+                  "filePath": "/tmp/tmp-7-c2DGU9LlMmqy-.js",
+                  "flowType": "sink",
+                  "operation": "const expectedToken = `admin_${requestedRole}_${new Date().getDate()}`;",
+                  "lineNumber": 21,
+                  "stepNumber": 2,
+                  "codeSnippet": "const expectedToken = `admin_${requestedRole}_${new Date().getDate()}`;",
+                  "description": "Sink: Data reaches sensitive operation",
+                  "columnNumber": 6,
+                  "contextLines": {
+                    "after": [],
+                    "before": [],
+                    "current": "const expectedToken = `admin_${requestedRole}_${new Date().getDate()}`;"
+                  }
+                }
+              ],
+              "vulnerabilityId": "JAVASCRIPT-FLOW-001"
+            },
+            {
+              "id": "0qnn5xaify298twsba09txx",
+              "cwe": "CWE-20",
+              "name": "Data Flow Vulnerability",
+              "sink": {
+                "type": "template_literal",
+                "nodeId": "cpg_node_569",
+                "category": "injection",
+                "filePath": "/tmp/tmp-7-c2DGU9LlMmqy-.js",
+                "lineNumber": 129,
+                "codeSnippet": "`Password reset for ${email}: new password is ${newPassword}, token: ${resetToken}`",
+                "columnNumber": 18
+              },
+              "type": "hardcoded_credentials",
+              "owasp": "A06:2021 – Vulnerable and Outdated Components",
+              "source": {
+                "type": "hardcoded_credential",
+                "nodeId": "cpg_node_89",
+                "category": "hardcoded_credentials",
+                "filePath": "/tmp/tmp-7-c2DGU9LlMmqy-.js",
+                "lineNumber": 13,
+                "codeSnippet": "(token, requestedRole)",
+                "columnNumber": 26
+              },
+              "category": "intra-file",
+              "language": "javascript",
+              "metadata": {
+                "requestId": "scan-1754431008799-0.8275541952466676",
+                "pathLength": 2,
+                "isInterFile": false,
+                "analysisType": "structured_taint_flow",
+                "sinkCategory": "injection",
+                "sourceCategory": "hardcoded_credentials"
+              },
+              "severity": "high",
+              "framework": "nodejs",
+              "confidence": 0.8,
+              "sanitizers": [],
+              "description": "Untrusted data flows to sensitive operation",
+              "taintFlowPath": [
+                {
+                  "nodeId": "cpg_node_89",
+                  "filePath": "/tmp/tmp-7-c2DGU9LlMmqy-.js",
+                  "flowType": "source",
+                  "operation": "`admin_${requestedRole}_${new Date().getDate()}`",
+                  "lineNumber": 21,
+                  "stepNumber": 1,
+                  "codeSnippet": "`admin_${requestedRole}_${new Date().getDate()}`",
+                  "description": "Source: Data enters the system via user_input",
+                  "columnNumber": 28,
+                  "contextLines": {
+                    "after": [],
+                    "before": [],
+                    "current": "`admin_${requestedRole}_${new Date().getDate()}`"
+                  }
+                },
+                {
+                  "nodeId": "cpg_node_569",
+                  "filePath": "/tmp/tmp-7-c2DGU9LlMmqy-.js",
+                  "flowType": "sink",
+                  "operation": "`Password reset for ${email}: new password is ${newPassword}, token: ${resetToken}`",
+                  "lineNumber": 129,
+                  "stepNumber": 2,
+                  "codeSnippet": "`Password reset for ${email}: new password is ${newPassword}, token: ${resetToken}`",
+                  "description": "Sink: Data reaches sensitive operation",
+                  "columnNumber": 18,
+                  "contextLines": {
+                    "after": [],
+                    "before": [],
+                    "current": "`Password reset for ${email}: new password is ${newPassword}, token: ${resetToken}`"
+                  }
+                }
+              ],
+              "vulnerabilityId": "JAVASCRIPT-FLOW-001"
+            }
+          ],
+          "standaloneVulnerabilities": [
+            {
+              "id": "m8q7j",
+              "cwe": "CWE-798",
+              "name": "Hardcoded Credentials",
+              "type": "JS-CRED-001",
+              "owasp": "A07:2021 – Identification and Authentication Failures",
+              "nodeId": "cpg_node_47",
+              "category": "hardcoded_credentials",
+              "filePath": "/Users/anirudh/Desktop/vulnzap-engine/training/vulnshop-api/src/services/auth.js",
+              "location": {
+                "end": {
+                  "row": 9,
+                  "column": 50
+                },
+                "start": {
+                  "row": 9,
+                  "column": 4
+                },
+                "snippet": "this.apikey = 'AXIS12093nwjn2309rjojwoeuf0239'"
+              },
+              "metadata": {
+                "standalone": true,
+                "credentialType": "variable_assignment",
+                "detectionMethod": "agentic_analysis"
+              },
+              "severity": "critical",
+              "confidence": 1,
+              "codeSnippet": "this.apikey = 'AXIS12093nwjn2309rjojwoeuf0239'",
+              "description": "Hardcoded credentials detected: variable_assignment",
+              "vulnerabilityId": "JS-CRED-001"
+            }
+          ]
+        }
+      ]
+    },
+    "createdAt": "2025-08-05T21:58:11.955Z"
+  }
+}
