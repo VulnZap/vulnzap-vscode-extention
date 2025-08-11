@@ -512,6 +512,41 @@
           "type": "boolean",
           "default": true,
           "description": "Respect .gitignore files when indexing the codebase"
+        },
+        "vulnzap.retryAttempts": {
+          "type": "number",
+          "default": 3,
+          "minimum": 1,
+          "maximum": 10,
+          "description": "Number of retry attempts for API calls when rate limited. Default: 3"
+        },
+        "vulnzap.initialPollingInterval": {
+          "type": "number",
+          "default": 15000,
+          "minimum": 5000,
+          "maximum": 60000,
+          "description": "Initial polling interval in milliseconds for checking scan job status. Default: 15 seconds"
+        },
+        "vulnzap.maxPollingInterval": {
+          "type": "number",
+          "default": 60000,
+          "minimum": 15000,
+          "maximum": 300000,
+          "description": "Maximum polling interval in milliseconds (with exponential backoff). Default: 60 seconds"
+        },
+        "vulnzap.requestQueueDelay": {
+          "type": "number",
+          "default": 500,
+          "minimum": 0,
+          "maximum": 5000,
+          "description": "Delay in milliseconds between queued API requests to prevent overwhelming the server. Default: 500ms"
+        },
+        "vulnzap.maxPollingAttempts": {
+          "type": "number",
+          "default": 1000,
+          "minimum": 100,
+          "maximum": 10000,
+          "description": "Failsafe maximum number of polling attempts before giving up (prevents infinite loops). Default: 1000"
         }
       }
     }

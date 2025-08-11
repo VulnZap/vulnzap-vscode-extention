@@ -885,6 +885,10 @@ export async function activate(context: vscode.ExtensionContext) {
 
         Logger.info("=== VULNZAP SCAN STARTING ===");
         Logger.info("Document:", document.uri.fsPath);
+
+        // Start loading indicator in security view
+        securityViewProvider.startScanLoading(document);
+
         if (fileSize > 0.5 * maxFileSize || lineCount > 0.5 * maxFileLines) {
           updateStatusBar("scanning");
           vscode.window.setStatusBarMessage(
@@ -933,6 +937,8 @@ export async function activate(context: vscode.ExtensionContext) {
         }
       } catch (error) {
         Logger.error("=== SCAN ERROR ===", error as Error);
+        // Stop loading indicator on error
+        securityViewProvider.stopScanLoading(document);
         updateStatusBar(); // Reset to normal status
         if (forceShow) {
           vscode.window.showErrorMessage("Error during security scan");

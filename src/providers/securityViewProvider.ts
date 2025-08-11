@@ -57,6 +57,7 @@ export class SecurityViewProvider
     string,
     { timestamp: Date; issueCount: number; isEnabled: boolean }
   > = new Map();
+  private loadingFiles: Set<string> = new Set(); // Track files currently being scanned
   private apiProviderManager: APIProviderManager;
 
   constructor(private context: vscode.ExtensionContext) {
@@ -430,10 +431,31 @@ export class SecurityViewProvider
   private getRecentScansSection(): SecurityTreeItem {
     const recentItems: SecurityTreeItem[] = [];
 
-    // Sort by timestamp, most recent first
+    // First, add currently loading files
+    for (const fileUri of this.loadingFiles) {
+      const uri = vscode.Uri.parse(fileUri);
+      const fileName = uri.path.split("/").pop() || "Unknown";
+
+      recentItems.push({
+        label: fileName,
+        description: "Scanning...",
+        tooltip: "Security scan in progress",
+        iconPath: new vscode.ThemeIcon("loading~spin"),
+        contextValue: "loadingScan",
+        resourceUri: uri,
+        command: {
+          command: "vscode.open",
+          title: "Open File",
+          arguments: [uri],
+        },
+      });
+    }
+
+    // Then, add recent completed scans (exclude currently loading files)
     const sortedScans = Array.from(this.scanResults.entries())
+      .filter(([fileUri]) => !this.loadingFiles.has(fileUri)) // Exclude loading files
       .sort(([, a], [, b]) => b.timestamp.getTime() - a.timestamp.getTime())
-      .slice(0, 5); // Show last 5 scans
+      .slice(0, 5 - recentItems.length); // Adjust slice to account for loading items
 
     for (const [fileUri, result] of sortedScans) {
       const uri = vscode.Uri.parse(fileUri);
@@ -471,7 +493,10 @@ export class SecurityViewProvider
     return {
       label: "Recent Scans",
       iconPath: new vscode.ThemeIcon("history"),
-      collapsibleState: vscode.TreeItemCollapsibleState.Collapsed,
+      collapsibleState:
+        this.loadingFiles.size > 0
+          ? vscode.TreeItemCollapsibleState.Expanded // Auto-expand when files are loading
+          : vscode.TreeItemCollapsibleState.Collapsed,
       contextValue: "recentSection",
       children: recentItems,
     };
@@ -603,14 +628,17 @@ export class SecurityViewProvider
     document: vscode.TextDocument,
     issues: SecurityIssue[]
   ): void {
-    this.securityIssues.set(document.uri.toString(), issues);
-    this.scanResults.set(document.uri.toString(), {
+    const fileUri = document.uri.toString();
+    this.securityIssues.set(fileUri, issues);
+    this.scanResults.set(fileUri, {
       timestamp: new Date(),
       issueCount: issues.length,
       isEnabled: vscode.workspace
         .getConfiguration("vulnzap")
         .get("enabled", true),
     });
+    // Automatically stop loading state when scan results are updated
+    this.loadingFiles.delete(fileUri);
     this.refresh();
   }
 
@@ -742,6 +770,22 @@ export class SecurityViewProvider
 
   clearDependencyVulnerabilities(): void {
     this.dependencyVulnerabilities.clear();
+    this.refresh();
+  }
+
+  // Loading state management methods
+  startScanLoading(document: vscode.TextDocument): void {
+    this.loadingFiles.add(document.uri.toString());
+    this.refresh();
+  }
+
+  stopScanLoading(document: vscode.TextDocument): void {
+    this.loadingFiles.delete(document.uri.toString());
+    this.refresh();
+  }
+
+  clearAllLoadingStates(): void {
+    this.loadingFiles.clear();
     this.refresh();
   }
 }

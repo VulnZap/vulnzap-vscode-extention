@@ -346,6 +346,7 @@ export class VulnZapProvider implements APIProvider {
   name = "vulnzap";
   displayName = "VulnZap API";
   private context: vscode.ExtensionContext | undefined;
+  private requestQueue: Promise<any> = Promise.resolve();
 
   constructor(context?: vscode.ExtensionContext) {
     this.context = context;
@@ -397,68 +398,102 @@ export class VulnZapProvider implements APIProvider {
   }
 
   /**
-   * Analyzes code for security vulnerabilities using text-based approach
+   * Analyzes code for security vulnerabilities using text-based approach with request queuing
    */
   async analyzeCode(
     code: string,
     filePath: string,
     language: string
   ): Promise<AISecurityResponse> {
-    const config = vscode.workspace.getConfiguration("vulnzap");
-    const apiKey = config.get("vulnzapApiKey", "").trim();
-    const apiUrl = config.get("vulnzapApiUrl", "").trim();
+    // Queue requests to prevent overwhelming the API
+    return this.queueRequest(async () => {
+      const config = vscode.workspace.getConfiguration("vulnzap");
+      const apiKey = config.get("vulnzapApiKey", "").trim();
+      const apiUrl = config.get("vulnzapApiUrl", "").trim();
 
-    if (!apiKey || !apiUrl) {
-      throw new Error("VulnZap API key and URL are required");
-    }
-
-    const startTime = Date.now();
-    const fastScan = config.get("enableFastScan", true);
-
-    try {
-      // Use text-based analysis (AST removed for simplicity and speed)
-      Logger.debug(`Using text-based analysis for ${language}`);
-      const analysisResult = await this.performTextBasedAnalysis(
-        filePath,
-        code,
-        language,
-        apiKey,
-        apiUrl,
-        fastScan
-      );
-
-      const analysisTime = Date.now() - startTime;
-      analysisResult.analysisTime = analysisTime;
-
-      return analysisResult;
-    } catch (error: any) {
-      Logger.error("VulnZap API error:", error as Error);
-
-      // Provide specific error messages based on the type of failure
-      if (error.response) {
-        const status = error.response.status;
-        const message =
-          error.response.data?.message || error.response.statusText;
-
-        if (status === 401) {
-          throw new Error("Invalid VulnZap API key");
-        } else if (status === 429) {
-          throw new Error("VulnZap API rate limit exceeded");
-        } else if (status >= 500) {
-          throw new Error("VulnZap API server error");
-        } else {
-          throw new Error(`VulnZap API error: ${message}`);
-        }
-      } else if (error.code === "ENOTFOUND" || error.code === "ECONNREFUSED") {
-        throw new Error("Cannot connect to VulnZap API - check URL");
-      } else {
-        throw new Error(`VulnZap API error: ${error.message}`);
+      if (!apiKey || !apiUrl) {
+        throw new Error("VulnZap API key and URL are required");
       }
-    }
+
+      const startTime = Date.now();
+      const fastScan = config.get("enableFastScan", true);
+
+      try {
+        // Use text-based analysis (AST removed for simplicity and speed)
+        Logger.debug(`Using text-based analysis for ${language}`);
+        const analysisResult = await this.performTextBasedAnalysis(
+          filePath,
+          code,
+          language,
+          apiKey,
+          apiUrl,
+          fastScan
+        );
+
+        const analysisTime = Date.now() - startTime;
+        analysisResult.analysisTime = analysisTime;
+
+        return analysisResult;
+      } catch (error: any) {
+        Logger.error("VulnZap API error:", error as Error);
+
+        // Provide specific error messages based on the type of failure
+        if (error.response) {
+          const status = error.response.status;
+          const message =
+            error.response.data?.message || error.response.statusText;
+
+          if (status === 401) {
+            throw new Error("Invalid VulnZap API key");
+          } else if (status === 429) {
+            // This should rarely happen now due to our retry logic, but provide helpful message
+            throw new Error(
+              "VulnZap API rate limit exceeded. The extension has automatic retry logic, but the API is currently overloaded. Please try again in a few minutes."
+            );
+          } else if (status >= 500) {
+            throw new Error("VulnZap API server error");
+          } else {
+            throw new Error(`VulnZap API error: ${message}`);
+          }
+        } else if (
+          error.code === "ENOTFOUND" ||
+          error.code === "ECONNREFUSED"
+        ) {
+          throw new Error("Cannot connect to VulnZap API - check URL");
+        } else if (error.message.includes("rate limit exceeded")) {
+          // This is our custom rate limit error from makeApiCallWithRetry
+          throw error;
+        } else {
+          throw new Error(`VulnZap API error: ${error.message}`);
+        }
+      }
+    });
   }
 
   /**
-   * Perform text-based analysis (fast and simple)
+   * Queues API requests to prevent overwhelming the server
+   */
+  private async queueRequest<T>(request: () => Promise<T>): Promise<T> {
+    const config = vscode.workspace.getConfiguration("vulnzap");
+    const queueDelay = config.get("requestQueueDelay", 500);
+
+    const currentRequest = this.requestQueue.then(async () => {
+      // Add a configurable delay between requests to be respectful to the API
+      if (queueDelay > 0) {
+        await this.sleep(queueDelay);
+      }
+      return request();
+    });
+
+    this.requestQueue = currentRequest.catch(() => {
+      // Ignore errors in the queue chain to prevent blocking future requests
+    });
+
+    return currentRequest;
+  }
+
+  /**
+   * Perform text-based analysis with rate limiting and retry logic
    */
   private async performTextBasedAnalysis(
     filePath: string,
@@ -468,26 +503,28 @@ export class VulnZapProvider implements APIProvider {
     apiUrl: string,
     fastScan: boolean
   ): Promise<AISecurityResponse> {
-    // Step 1: Start the scan job
-    const scanResponse = await axios.post(
-      `${apiUrl}/api/scan/content`,
-      {
-        files: [
-          {
-            name: filePath,
-            content: code,
-            language: language,
-          },
-        ],
-      },
-      {
-        headers: {
-          "x-api-key": `${apiKey}`,
-          "Content-Type": "application/json",
-          "User-Agent": "VulnZap-VSCode-Extension",
+    // Step 1: Start the scan job with retry logic
+    const scanResponse = await this.makeApiCallWithRetry(async () => {
+      return axios.post(
+        `${apiUrl}/api/scan/content`,
+        {
+          files: [
+            {
+              name: filePath,
+              content: code,
+              language: language,
+            },
+          ],
         },
-      }
-    );
+        {
+          headers: {
+            "x-api-key": `${apiKey}`,
+            "Content-Type": "application/json",
+            "User-Agent": "VulnZap-VSCode-Extension",
+          },
+        }
+      );
+    });
 
     // Extract job ID from the scan response
     const jobId = scanResponse.data?.data?.jobId;
@@ -495,24 +532,76 @@ export class VulnZapProvider implements APIProvider {
       throw new Error("No job ID returned from scan request");
     }
 
-    // Step 2: Poll for results (no timeout limit)
-    const pollingInterval = 2000; // 2 seconds
+    // Step 2: Poll for results with exponential backoff (no timeout)
+    const config = vscode.workspace.getConfiguration("vulnzap");
+    const initialPollingInterval = config.get("initialPollingInterval", 15000); // Default 15 seconds
+    const maxPollingInterval = config.get("maxPollingInterval", 60000); // Default 60 seconds
 
-    for (let attempt = 0; ; attempt++) {
+    // Get file info for logging
+    const fileSizeKB = Buffer.byteLength(code, "utf8") / 1024;
+    const lineCount = code.split("\n").length;
+
+    Logger.info(
+      `Starting scan polling for ${filePath} (${fileSizeKB.toFixed(
+        1
+      )}KB, ${lineCount} lines). No timeout - will poll until completion.`
+    );
+
+    // Inform user about potentially long scans for large files
+    if (fileSizeKB > 500 || lineCount > 5000) {
+      vscode.window.showInformationMessage(
+        `VulnZap: Large file detected (${fileSizeKB.toFixed(
+          1
+        )}KB, ${lineCount} lines). This scan may take several minutes to complete.`,
+        { modal: false }
+      );
+    }
+
+    const startTime = Date.now();
+    let pollingInterval = initialPollingInterval;
+    let attempt = 0;
+    const maxPollingAttempts = config.get("maxPollingAttempts", 1000); // Failsafe: max 1000 attempts
+
+    // Poll until job completes, fails, or we hit the failsafe limit
+    while (attempt < maxPollingAttempts) {
       try {
-        const jobResponse = await axios.get(
-          `${apiUrl}/api/scan/jobs/${jobId}`,
-          {
+        const jobResponse = await this.makeApiCallWithRetry(async () => {
+          return axios.get(`${apiUrl}/api/scan/jobs/${jobId}`, {
             headers: {
               "x-api-key": `${apiKey}`,
               "Content-Type": "application/json",
               "User-Agent": "VulnZap-VSCode-Extension",
             },
-          }
-        );
+          });
+        });
 
         const jobData = jobResponse.data?.data;
-        if (jobData?.status.toLowerCase() === "completed") {
+        Logger.debug(
+          `Job polling response (attempt ${attempt + 1}):`,
+          JSON.stringify(jobResponse.data, null, 2)
+        );
+
+        if (!jobData) {
+          Logger.warn("No job data received from API response");
+          await this.sleep(pollingInterval);
+          continue;
+        }
+
+        Logger.debug(`Job status: ${jobData.status}`);
+
+        // Provide progress feedback for long-running scans
+        const elapsedTime = Date.now() - startTime;
+        if (elapsedTime > 60000 && attempt % 3 === 0) {
+          // Every 3rd attempt after 1 minute
+          const elapsedMinutes = Math.round(elapsedTime / 60000);
+          Logger.info(
+            `Scan still in progress (${elapsedMinutes} minute${
+              elapsedMinutes !== 1 ? "s" : ""
+            } elapsed). Job status: ${jobData.status || "unknown"}`
+          );
+        }
+
+        if (jobData.status?.toLowerCase() === "completed") {
           // Step 3: Get the result ID and fetch detailed results
           const resultsData: VulnZapResponse = jobResponse.data;
           if (!resultsData) {
@@ -536,25 +625,111 @@ export class VulnZapProvider implements APIProvider {
               approach: "text-based",
               jobId,
               pollingAttempts: attempt + 1,
+              totalPollingTime: Date.now() - startTime,
             }
           );
 
           return this.normalizeResponse(resultsData);
-        } else if (jobData?.status.toLowerCase() === "failed") {
+        } else if (jobData.status?.toLowerCase() === "failed") {
           throw new Error(
             `Scan job failed: ${jobData.error || "Unknown error"}`
           );
         }
 
-        // Job is still in progress, wait before next poll
-        await new Promise((resolve) => setTimeout(resolve, pollingInterval));
+        // Job is still in progress, wait before next poll with exponential backoff
+        await this.sleep(pollingInterval);
+
+        // Increase polling interval exponentially, but cap at maximum
+        pollingInterval = Math.min(pollingInterval * 1.5, maxPollingInterval);
+        attempt++;
       } catch (error: any) {
         if (error.response?.status === 404) {
           throw new Error("Scan job not found");
         }
+        // If it's a rate limit error during polling, it will be handled by makeApiCallWithRetry
         throw error;
       }
     }
+
+    // Failsafe: if we somehow exit the loop without completing
+    const elapsedHours = Math.round((Date.now() - startTime) / 3600000);
+    throw new Error(
+      `Scan job exceeded maximum polling attempts (${maxPollingAttempts}) after ${elapsedHours} hours. ` +
+        `The job may be stuck or the server may be unresponsive. Please try again or contact support.`
+    );
+  }
+
+  /**
+   * Makes an API call with retry logic and exponential backoff for rate limiting
+   */
+  private async makeApiCallWithRetry<T>(
+    apiCall: () => Promise<T>,
+    maxRetries?: number
+  ): Promise<T> {
+    const config = vscode.workspace.getConfiguration("vulnzap");
+    const configuredRetries = config.get("retryAttempts", 3);
+    const actualMaxRetries = maxRetries ?? configuredRetries;
+    let lastError: any;
+
+    for (let attempt = 0; attempt <= actualMaxRetries; attempt++) {
+      try {
+        return await apiCall();
+      } catch (error: any) {
+        lastError = error;
+
+        // Check if it's a rate limit error
+        if (error.response?.status === 429) {
+          if (attempt < actualMaxRetries) {
+            // Extract retry-after header if available
+            const retryAfter = error.response.headers["retry-after"];
+            let waitTime = retryAfter
+              ? parseInt(retryAfter) * 1000
+              : this.calculateBackoffDelay(attempt);
+
+            // Cap the wait time to a reasonable maximum (2 minutes)
+            waitTime = Math.min(waitTime, 120000);
+
+            Logger.warn(
+              `Rate limit exceeded (attempt ${attempt + 1}/${
+                actualMaxRetries + 1
+              }). ` + `Waiting ${waitTime / 1000} seconds before retry...`
+            );
+
+            await this.sleep(waitTime);
+            continue;
+          } else {
+            Logger.error(
+              `Rate limit exceeded after ${actualMaxRetries} retries. Giving up.`
+            );
+            throw new Error(
+              "VulnZap API rate limit exceeded. Please try again later."
+            );
+          }
+        }
+
+        // For other errors, don't retry
+        throw error;
+      }
+    }
+
+    throw lastError;
+  }
+
+  /**
+   * Calculates exponential backoff delay
+   */
+  private calculateBackoffDelay(attempt: number): number {
+    // Exponential backoff: 2^attempt * 1000ms, with jitter
+    const baseDelay = Math.pow(2, attempt) * 1000;
+    const jitter = Math.random() * 0.1 * baseDelay; // Add up to 10% jitter
+    return Math.floor(baseDelay + jitter);
+  }
+
+  /**
+   * Sleep utility function
+   */
+  private sleep(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
   /**
@@ -564,6 +739,8 @@ export class VulnZapProvider implements APIProvider {
    */
   private normalizeResponse(data: VulnZapResponse): AISecurityResponse {
     try {
+      Logger.debug("Normalizing API response:", JSON.stringify(data, null, 2));
+
       let allVulnerabilities: any[] = [];
       let totalScanTime = 0;
       let totalLinesOfCode = 0;
@@ -638,7 +815,7 @@ export class VulnZapProvider implements APIProvider {
       const severityCount = { critical: 0, high: 0, medium: 0, low: 0 };
 
       allVulnerabilities.forEach((vuln) => {
-        const severity = vuln.severity?.toLowerCase();
+        const severity = vuln.severity?.toLowerCase() || "low";
         if (severity === "critical") {
           severityCount.critical++;
           overallRisk = "critical";
@@ -805,8 +982,11 @@ export class VulnZapProvider implements APIProvider {
   /**
    * Maps API severity levels to VS Code severity levels
    */
-  private mapSeverityToVSCode(severity: string): "error" | "warning" | "info" {
-    switch (severity?.toLowerCase()) {
+  private mapSeverityToVSCode(
+    severity: string | undefined
+  ): "error" | "warning" | "info" {
+    const normalizedSeverity = severity?.toLowerCase() || "low";
+    switch (normalizedSeverity) {
       case "critical":
       case "high":
         return "error";
