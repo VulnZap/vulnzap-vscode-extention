@@ -102,36 +102,6 @@
         "icon": "$(sign-out)"
       },
       {
-        "command": "vulnzap.buildIndex",
-        "title": "Build Security Index",
-        "category": "Security",
-        "icon": "$(database)"
-      },
-      {
-        "command": "vulnzap.indexStats",
-        "title": "View Index Statistics",
-        "category": "Security",
-        "icon": "$(info)"
-      },
-      {
-        "command": "vulnzap.showIgnorePatterns",
-        "title": "Show Indexing Ignore Patterns",
-        "category": "Security",
-        "icon": "$(list-filter)"
-      },
-      {
-        "command": "vulnzap.clearIndex",
-        "title": "Clear Security Index",
-        "category": "Security",
-        "icon": "$(trash)"
-      },
-      {
-        "command": "vulnzap.findSimilarCode",
-        "title": "Find Similar Code Patterns",
-        "category": "Security",
-        "icon": "$(search)"
-      },
-      {
         "command": "vulnzap.scanDependencies",
         "title": "Scan Dependencies for Vulnerabilities",
         "category": "Security",
@@ -243,26 +213,6 @@
           "when": "true"
         },
         {
-          "command": "vulnzap.buildIndex",
-          "when": "true"
-        },
-        {
-          "command": "vulnzap.indexStats",
-          "when": "true"
-        },
-        {
-          "command": "vulnzap.showIgnorePatterns",
-          "when": "true"
-        },
-        {
-          "command": "vulnzap.clearIndex",
-          "when": "true"
-        },
-        {
-          "command": "vulnzap.findSimilarCode",
-          "when": "editorHasSelection"
-        },
-        {
           "command": "vulnzap.scanDependencies",
           "when": "true"
         },
@@ -314,16 +264,6 @@
           "command": "vulnzap.clearAllIssues",
           "when": "view == vulnzap.securityView",
           "group": "navigation"
-        },
-        {
-          "command": "vulnzap.buildIndex",
-          "when": "view == vulnzap.securityView",
-          "group": "index"
-        },
-        {
-          "command": "vulnzap.indexStats",
-          "when": "view == vulnzap.securityView",
-          "group": "index"
         },
         {
           "command": "vulnzap.scanDependencies",
@@ -420,30 +360,6 @@
           "default": true,
           "description": "Analyze data flow to better understand if user input reaches vulnerable functions"
         },
-        "vulnzap.enableVectorIndexing": {
-          "type": "boolean",
-          "default": true,
-          "description": "Enable vector indexing for semantic code analysis and similarity detection"
-        },
-        "vulnzap.autoIndexOnSave": {
-          "type": "boolean",
-          "default": true,
-          "description": "Automatically update the vector index when files are saved"
-        },
-        "vulnzap.vectorSimilarityThreshold": {
-          "type": "number",
-          "default": 0.7,
-          "minimum": 0.5,
-          "maximum": 1,
-          "description": "Similarity threshold (0.5-1.0) for vector-based code pattern matching"
-        },
-        "vulnzap.indexChunkSize": {
-          "type": "number",
-          "default": 500,
-          "minimum": 100,
-          "maximum": 2000,
-          "description": "Number of lines per code chunk for vector indexing"
-        },
         "vulnzap.enableDependencyScanning": {
           "type": "boolean",
           "default": true,
@@ -494,24 +410,6 @@
           "type": "number",
           "default": 100,
           "description": "Maximum number of issues to report per file. Scanning stops after this many issues are found. Default: 100"
-        },
-        "vulnzap.indexing.additionalIgnorePatterns": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          },
-          "default": [],
-          "description": "Additional glob patterns to ignore during codebase indexing (e.g., ['**/custom-build/**', '**/*.generated.js'])"
-        },
-        "vulnzap.indexing.disableDefaultIgnorePatterns": {
-          "type": "boolean",
-          "default": false,
-          "description": "Disable built-in ignore patterns (node_modules, .git, dist, etc.). Use with caution as this may significantly slow down indexing."
-        },
-        "vulnzap.indexing.respectGitignore": {
-          "type": "boolean",
-          "default": true,
-          "description": "Respect .gitignore files when indexing the codebase"
         },
         "vulnzap.retryAttempts": {
           "type": "number",

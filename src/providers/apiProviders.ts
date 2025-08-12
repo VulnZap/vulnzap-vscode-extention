@@ -526,6 +526,8 @@ export class VulnZapProvider implements APIProvider {
       );
     });
 
+    Logger.debug("Scan response:", JSON.stringify(scanResponse.data, null, 2));
+
     // Extract job ID from the scan response
     const jobId = scanResponse.data?.data?.jobId;
     if (!jobId) {
@@ -602,6 +604,7 @@ export class VulnZapProvider implements APIProvider {
         }
 
         if (jobData.status?.toLowerCase() === "completed") {
+          Logger.debug("Job completed", JSON.stringify(jobData, null, 2));
           // Step 3: Get the result ID and fetch detailed results
           const resultsData: VulnZapResponse = jobResponse.data;
           if (!resultsData) {
@@ -612,6 +615,17 @@ export class VulnZapProvider implements APIProvider {
             `Results data structure:`,
             JSON.stringify(resultsData, null, 2)
           );
+
+          // Additional detailed logging for debugging
+          Logger.debug("Response analysis:");
+          Logger.debug("- resultsData.success:", resultsData.success);
+          Logger.debug("- resultsData.data type:", typeof resultsData.data);
+          if (resultsData.data) {
+            Logger.debug(
+              "- resultsData.data keys:",
+              Object.keys(resultsData.data)
+            );
+          }
 
           // Log the interaction for debugging and analytics
           await LLMLogger.logLLMInteraction(
@@ -745,6 +759,30 @@ export class VulnZapProvider implements APIProvider {
       let totalScanTime = 0;
       let totalLinesOfCode = 0;
 
+      // Enhanced debugging of response structure
+      Logger.debug("Response data keys:", Object.keys(data.data || {}));
+      if (data.data && typeof data.data === "object") {
+        Logger.debug("Data structure analysis:");
+        Logger.debug("- Has 'results':", "results" in data.data);
+        Logger.debug(
+          "- Has 'vulnerabilities':",
+          "vulnerabilities" in data.data
+        );
+        Logger.debug(
+          "- Has 'standaloneVulnerabilities':",
+          "standaloneVulnerabilities" in data.data
+        );
+        if ("results" in data.data && data.data.results) {
+          Logger.debug("- Results keys:", Object.keys(data.data.results));
+          if (data.data.results.vulnerabilities) {
+            Logger.debug(
+              "- Results.vulnerabilities length:",
+              data.data.results.vulnerabilities.length
+            );
+          }
+        }
+      }
+
       // Handle new nested response format
       if ("results" in data.data && data.data.results) {
         // New API response format
@@ -799,10 +837,44 @@ export class VulnZapProvider implements APIProvider {
           ...(legacyData.vulnerabilities || []),
           ...(legacyData.standaloneVulnerabilities || []),
         ];
+
+        // Additional fallback: check if the response has vulnerabilities directly in the data object
+        // This handles cases where the API returns vulnerabilities in a different structure
+        if (
+          allVulnerabilities.length === 0 &&
+          data.data &&
+          typeof data.data === "object"
+        ) {
+          Logger.debug("Trying additional response format checks...");
+
+          // Check for direct vulnerabilities array in various possible locations
+          const possibleVulnArrays = [
+            (data.data as any).vulnerabilities,
+            (data.data as any).issues,
+            (data.data as any).findings,
+            (data.data as any).results?.vulnerabilities,
+            (data.data as any).scan?.vulnerabilities,
+            (data.data as any).analysis?.vulnerabilities,
+          ];
+
+          for (const vulnArray of possibleVulnArrays) {
+            if (Array.isArray(vulnArray) && vulnArray.length > 0) {
+              Logger.debug(
+                `Found vulnerabilities in alternative format: ${vulnArray.length} items`
+              );
+              allVulnerabilities = vulnArray;
+              break;
+            }
+          }
+        }
       }
 
       if (allVulnerabilities.length === 0) {
         Logger.warn("No results found in VulnZap scan response.");
+        Logger.warn(
+          "Full response structure for debugging:",
+          JSON.stringify(data, null, 2)
+        );
         return {
           issues: [],
           summary: "No security vulnerabilities detected",
