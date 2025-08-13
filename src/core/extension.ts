@@ -869,6 +869,10 @@ export async function activate(context: vscode.ExtensionContext) {
         const maxFileSize = config.get<number>("maxFileSizeBytes", 1000000);
         const maxFileLines = config.get<number>("maxFileLines", 2000);
         const maxIssues = config.get<number>("maxIssuesPerFile", 100);
+        const showScanNotification = config.get<boolean>(
+          "showScanNotification",
+          true
+        );
         const fileSize = Buffer.byteLength(document.getText(), "utf8");
         const lineCount = document.lineCount;
 
@@ -889,17 +893,103 @@ export async function activate(context: vscode.ExtensionContext) {
         // Start loading indicator in security view
         securityViewProvider.startScanLoading(document);
 
-        if (fileSize > 0.5 * maxFileSize || lineCount > 0.5 * maxFileLines) {
-          updateStatusBar("scanning");
-          vscode.window.setStatusBarMessage(
-            "$(loading~spin) VulnZap: Scanning large file...",
-            3000
+        // Show cancellable progress notification (if enabled)
+        const fileName = document.uri.fsPath.split(/[\\/]/).pop() || "file";
+        let issues: any[] = [];
+        let scanCancelled = false;
+
+        if (showScanNotification) {
+          await vscode.window.withProgress(
+            {
+              location: vscode.ProgressLocation.Notification,
+              title: `🔍 VulnZap: Scanning ${fileName} for security issues...`,
+              cancellable: true,
+            },
+            async (progress, token) => {
+              // Check if user cancelled before starting
+              if (token.isCancellationRequested) {
+                scanCancelled = true;
+                return;
+              }
+
+              // Update status bar
+              if (
+                fileSize > 0.5 * maxFileSize ||
+                lineCount > 0.5 * maxFileLines
+              ) {
+                updateStatusBar("scanning");
+                progress.report({ message: "Analyzing large file..." });
+              } else {
+                updateStatusBar("scanning");
+                progress.report({ message: "Analyzing code..." });
+              }
+
+              // Set up cancellation handler
+              token.onCancellationRequested(() => {
+                scanCancelled = true;
+                Logger.info("User cancelled security scan");
+                // Immediately clean up UI when cancelled
+                securityViewProvider.stopScanLoading(document);
+                updateStatusBar(); // Reset status bar immediately
+                vscode.window.showInformationMessage(
+                  "VulnZap: Security scan cancelled"
+                );
+              });
+
+              try {
+                // Perform the actual scan
+                issues = await codebaseSecurityAnalyzer.analyzeDocument(
+                  document
+                );
+
+                // Check if cancelled after scan completes
+                if (token.isCancellationRequested) {
+                  scanCancelled = true;
+                  return;
+                }
+
+                progress.report({
+                  message: `Found ${issues.length} potential issue${
+                    issues.length === 1 ? "" : "s"
+                  }`,
+                });
+              } catch (error) {
+                if (!token.isCancellationRequested) {
+                  throw error; // Re-throw if not cancelled
+                }
+                // Additional cleanup in case cancellation occurred during scan
+                scanCancelled = true;
+                securityViewProvider.stopScanLoading(document);
+                updateStatusBar(); // Reset status bar
+              }
+            }
           );
         } else {
-          updateStatusBar("scanning");
+          // Silent scan without notification
+          if (fileSize > 0.5 * maxFileSize || lineCount > 0.5 * maxFileLines) {
+            updateStatusBar("scanning");
+            vscode.window.setStatusBarMessage(
+              "$(loading~spin) VulnZap: Scanning large file...",
+              3000
+            );
+          } else {
+            updateStatusBar("scanning");
+          }
+
+          try {
+            issues = await codebaseSecurityAnalyzer.analyzeDocument(document);
+          } catch (error) {
+            throw error;
+          }
         }
 
-        let issues = await codebaseSecurityAnalyzer.analyzeDocument(document);
+        // If scan was cancelled, clean up and return
+        if (scanCancelled) {
+          securityViewProvider.stopScanLoading(document);
+          updateStatusBar();
+          return;
+        }
+
         Logger.info(`Full issues: ${JSON.stringify(issues)}`);
         if (issues.length > maxIssues) {
           issues = issues.slice(0, maxIssues);
@@ -950,6 +1040,8 @@ export async function activate(context: vscode.ExtensionContext) {
       const supportedLanguages = [
         "javascript",
         "typescript",
+        "javascriptreact", // .jsx files
+        "typescriptreact", // .tsx files
         "python",
         "java",
         "php",

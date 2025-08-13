@@ -1,7 +1,7 @@
 {
   "name": "vulnzap",
   "displayName": "VulnZap",
-  "description": "AI-powered security analysis for JavaScript, TypeScript, Python, and Java code. Detects vulnerabilities like XSS, SQL injection, and weak cryptography with high accuracy.",
+  "description": "AI-powered security analysis for JavaScript, TypeScript, React (JSX/TSX), Python, and Java code. Detects vulnerabilities like XSS, SQL injection, and weak cryptography with high accuracy.",
   "version": "0.2.1",
   "publisher": "vulnzap",
   "icon": "icon.png",
@@ -33,6 +33,8 @@
   "activationEvents": [
     "onLanguage:javascript",
     "onLanguage:typescript",
+    "onLanguage:javascriptreact",
+    "onLanguage:typescriptreact",
     "onLanguage:python",
     "onLanguage:java",
     "onStartupFinished"
@@ -445,6 +447,11 @@
           "minimum": 100,
           "maximum": 10000,
           "description": "Failsafe maximum number of polling attempts before giving up (prevents infinite loops). Default: 1000"
+        },
+        "vulnzap.showScanNotification": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show cancellable notification when security scan starts. Disable for silent scanning."
         }
       }
     }
