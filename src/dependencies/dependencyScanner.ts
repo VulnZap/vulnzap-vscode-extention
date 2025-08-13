@@ -275,7 +275,7 @@ export class DependencyScanner {
         progress.report({ increment: 0, message: "Scanning packages..." });
 
         const response = await axios.post<BatchScanResponse>(
-          `${apiUrl}/api/v1/vulnzap/batch-scan`,
+          `${apiUrl}/api/scan/dependency`,
           batchRequest,
           {
             headers: {
