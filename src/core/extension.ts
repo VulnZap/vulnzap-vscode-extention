@@ -3,12 +3,13 @@ import * as vscode from "vscode";
 import { DiagnosticProvider } from "../providers/diagnosticProvider";
 import { DependencyDiagnosticProvider } from "../providers/dependencyDiagnosticProvider";
 import { APIProviderManager } from "../providers/apiProviders";
-import { SecurityViewProvider } from "../providers/securityViewProvider";
+import { SecurityWebviewProvider } from "../webview/SecurityWebviewProvider";
 import { LoginWebviewProvider } from "../webview/LoginWebviewProvider";
 
 import { CodebaseSecurityAnalyzer } from "../security/codebaseSecurityAnalyzer";
 import { DependencyScanner } from "../dependencies/dependencyScanner";
 import { Logger } from "../utils/logger";
+import { FileExclusionManager } from "../utils/fileExclusions";
 
 /**
  * Main extension activation function
@@ -27,17 +28,20 @@ export async function activate(context: vscode.ExtensionContext) {
     const dependencyDiagnosticProvider = new DependencyDiagnosticProvider(
       context
     );
-    const securityViewProvider = new SecurityViewProvider(context);
+    const securityWebviewProvider = new SecurityWebviewProvider(
+      context.extensionUri,
+      context
+    );
     const loginWebviewProvider = new LoginWebviewProvider(
       context.extensionUri,
       context
     );
     const dependencyScanner = new DependencyScanner(context);
 
-    // Register the security issues tree view in the sidebar
-    vscode.window.registerTreeDataProvider(
-      "vulnzap.securityView",
-      securityViewProvider
+    // Register the security webview in the sidebar
+    vscode.window.registerWebviewViewProvider(
+      SecurityWebviewProvider.viewType,
+      securityWebviewProvider
     );
 
     // Register the login webview provider
@@ -49,9 +53,14 @@ export async function activate(context: vscode.ExtensionContext) {
     // Set initial context based on login status
     updateLoginContext();
 
-    // Connect diagnostic providers with security view for synchronized updates
-    diagnosticProvider.setSecurityViewProvider(securityViewProvider);
-    dependencyDiagnosticProvider.setSecurityViewProvider(securityViewProvider);
+    // Suggest optimal layout for VulnZap when extension activates
+    suggestOptimalLayout();
+
+    // Connect diagnostic providers with security webview for synchronized updates
+    diagnosticProvider.setSecurityWebviewProvider(securityWebviewProvider);
+    dependencyDiagnosticProvider.setSecurityWebviewProvider(
+      securityWebviewProvider
+    );
 
     // Connect dependency scanner with dependency diagnostic provider
     dependencyScanner.setDependencyDiagnosticProvider(
@@ -80,6 +89,14 @@ export async function activate(context: vscode.ExtensionContext) {
 
         // Check if this is a dependency file and trigger dependency scan
         await dependencyScanner.onFileSaved(document);
+
+        // Check if file should be excluded from security scanning
+        if (FileExclusionManager.shouldExcludeFile(document.uri.fsPath)) {
+          Logger.debug(
+            `Skipping scan for excluded file: ${document.uri.fsPath}`
+          );
+          return;
+        }
 
         if (!isSupportedLanguage(document.languageId)) return;
 
@@ -110,7 +127,12 @@ export async function activate(context: vscode.ExtensionContext) {
 
         // Immediately scan the current file if one is open
         const activeEditor = vscode.window.activeTextEditor;
-        if (activeEditor) {
+        if (
+          activeEditor &&
+          !FileExclusionManager.shouldExcludeFile(
+            activeEditor.document.uri.fsPath
+          )
+        ) {
           scanDocument(activeEditor.document);
         }
       }
@@ -128,8 +150,8 @@ export async function activate(context: vscode.ExtensionContext) {
         updateStatusBar();
         diagnosticProvider.clearAll();
         dependencyDiagnosticProvider.clearAll();
-        securityViewProvider.clearAllSecurityIssues();
-        securityViewProvider.clearDependencyVulnerabilities();
+        securityWebviewProvider.clearAllSecurityIssues();
+        securityWebviewProvider.clearDependencyVulnerabilities();
         vscode.window.showInformationMessage("Security review disabled");
       }
     );
@@ -155,6 +177,19 @@ export async function activate(context: vscode.ExtensionContext) {
         const activeEditor = vscode.window.activeTextEditor;
         if (!activeEditor) {
           vscode.window.showWarningMessage("No active file to scan");
+          return;
+        }
+
+        // Check if file should be excluded from security scanning
+        if (
+          FileExclusionManager.shouldExcludeFile(
+            activeEditor.document.uri.fsPath
+          )
+        ) {
+          const reason = FileExclusionManager.getExclusionReason(
+            activeEditor.document.uri.fsPath
+          );
+          vscode.window.showWarningMessage(`Cannot scan this file: ${reason}`);
           return;
         }
 
@@ -198,19 +233,21 @@ export async function activate(context: vscode.ExtensionContext) {
       async () => {
         console.log("VulnZap: Toggle AST precision command called");
         const config = vscode.workspace.getConfiguration("vulnzap");
-        const currentValue = config.get("enableASTPrecision", true);
-        const newValue = !currentValue;
-
-        await config.update("enableASTPrecision", newValue, true);
-
-        const message = newValue
-          ? "✅ AST-guided precision analysis enabled"
-          : "❌ AST-guided precision analysis disabled";
-        vscode.window.showInformationMessage(message);
+        // AST precision is always enabled (hardcoded)
+        console.log("AST precision is always enabled (cannot be toggled)");
+        vscode.window.showInformationMessage(
+          "✅ AST-guided precision analysis is always enabled"
+        );
 
         // Rescan current file if one is open
         const activeEditor = vscode.window.activeTextEditor;
-        if (activeEditor && isEnabled) {
+        if (
+          activeEditor &&
+          isEnabled &&
+          !FileExclusionManager.shouldExcludeFile(
+            activeEditor.document.uri.fsPath
+          )
+        ) {
           await scanDocument(activeEditor.document, true);
         }
       }
@@ -223,7 +260,7 @@ export async function activate(context: vscode.ExtensionContext) {
       "vulnzap.refreshSecurityView",
       () => {
         console.log("VulnZap: Refresh security view command called");
-        securityViewProvider.refresh();
+        securityWebviewProvider.refresh();
         vscode.window.showInformationMessage("Security view refreshed");
       }
     );
@@ -235,119 +272,9 @@ export async function activate(context: vscode.ExtensionContext) {
         console.log("VulnZap: Clear all issues command called");
         diagnosticProvider.clearAll();
         dependencyDiagnosticProvider.clearAll();
-        securityViewProvider.clearAllSecurityIssues();
-        securityViewProvider.clearDependencyVulnerabilities();
+        securityWebviewProvider.clearAllSecurityIssues();
+        securityWebviewProvider.clearDependencyVulnerabilities();
         vscode.window.showInformationMessage("All security issues cleared");
-      }
-    );
-
-    // Command: Scan the entire workspace
-    const scanWorkspaceCommand = vscode.commands.registerCommand(
-      "vulnzap.scanWorkspace",
-      async () => {
-        console.log("VulnZap: Scan workspace command called");
-
-        if (!isEnabled) {
-          vscode.window.showWarningMessage(
-            "Security scanning is disabled. Enable it first."
-          );
-          return;
-        }
-
-        const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
-        if (!workspaceFolder) {
-          vscode.window.showWarningMessage("No workspace folder open");
-          return;
-        }
-
-        await vscode.window.withProgress(
-          {
-            location: vscode.ProgressLocation.Notification,
-            title: "Scanning workspace for security issues...",
-            cancellable: true,
-          },
-          async (progress, token) => {
-            const supportedExtensions = [".js", ".ts", ".py", ".java"];
-
-            // Comprehensive exclude pattern for build/output directories
-            const excludePatterns = [
-              // Package managers & dependencies
-              "**/node_modules/**",
-              "**/bower_components/**",
-
-              // JavaScript/TypeScript build outputs
-              "**/dist/**",
-              "**/build/**",
-              "**/out/**",
-              "**/.next/**",
-              "**/.nuxt/**",
-              "**/coverage/**",
-              "**/.nyc_output/**",
-
-              // Python build/cache directories
-              "**/__pycache__/**",
-              "**/build/**",
-              "**/dist/**",
-              "**/.pytest_cache/**",
-              "**/venv/**",
-              "**/env/**",
-              "**/.venv/**",
-              "**/site-packages/**",
-
-              // Java build outputs
-              "**/target/**",
-              "**/bin/**",
-              "**/.gradle/**",
-              "**/gradle/**",
-              "**/classes/**",
-
-              // IDE and editor directories
-              "**/.vscode/**",
-              "**/.idea/**",
-              "**/*.swp",
-              "**/*.swo",
-
-              // Version control and temp directories
-              "**/.git/**",
-              "**/tmp/**",
-              "**/temp/**",
-              "**/logs/**",
-              "**/.cache/**",
-              "**/.DS_Store",
-            ].join(",");
-
-            const files = await vscode.workspace.findFiles(
-              `**/*{${supportedExtensions.join(",")}}`,
-              `{${excludePatterns}}`
-            );
-
-            let scannedCount = 0;
-            for (const file of files) {
-              if (token.isCancellationRequested) {
-                break;
-              }
-
-              try {
-                const document = await vscode.workspace.openTextDocument(file);
-                if (isSupportedLanguage(document.languageId)) {
-                  await scanDocument(document);
-                  scannedCount++;
-                }
-              } catch (error) {
-                console.error(`Error scanning ${file.fsPath}:`, error);
-              }
-
-              progress.report({
-                increment: 100 / files.length,
-                message: `Scanned ${scannedCount}/${files.length} files`,
-              });
-            }
-
-            vscode.window.showInformationMessage(
-              `Workspace scan complete. Scanned ${scannedCount} files.`
-            );
-          }
-        );
       }
     );
 
@@ -453,7 +380,7 @@ export async function activate(context: vscode.ExtensionContext) {
           vscode.window.showInformationMessage("VulnZap: Login successful!");
           // 5. Update context and refresh views
           updateLoginContext();
-          securityViewProvider.refresh();
+          securityWebviewProvider.refresh();
           updateStatusBar(); // Update status bar to show logged in state
         } catch (err: any) {
           vscode.window.showErrorMessage(
@@ -502,10 +429,10 @@ export async function activate(context: vscode.ExtensionContext) {
           // Clear all issues and refresh views
           diagnosticProvider.clearAll();
           dependencyDiagnosticProvider.clearAll();
-          securityViewProvider.clearAllSecurityIssues();
-          securityViewProvider.clearDependencyVulnerabilities();
+          securityWebviewProvider.clearAllSecurityIssues();
+          securityWebviewProvider.clearDependencyVulnerabilities();
           updateLoginContext();
-          securityViewProvider.refresh();
+          securityWebviewProvider.refresh();
           updateStatusBar(); // Update status bar to show login required
 
           vscode.window.showInformationMessage(
@@ -522,6 +449,9 @@ export async function activate(context: vscode.ExtensionContext) {
         console.log("VulnZap: Scan dependencies command called");
 
         try {
+          // Notify webview that dependency scan is starting
+          securityWebviewProvider.startDependencyScanLoading();
+
           await vscode.window.withProgress(
             {
               location: vscode.ProgressLocation.Notification,
@@ -558,8 +488,13 @@ export async function activate(context: vscode.ExtensionContext) {
               }
             }
           );
+
+          // Notify webview that dependency scan is completed
+          securityWebviewProvider.stopDependencyScanLoading();
         } catch (error) {
           console.error("Error scanning dependencies:", error);
+          // Notify webview that dependency scan failed/completed
+          securityWebviewProvider.stopDependencyScanLoading();
           vscode.window.showErrorMessage(
             "Error scanning dependencies: " + (error as Error).message
           );
@@ -836,6 +771,75 @@ export async function activate(context: vscode.ExtensionContext) {
       }
     );
 
+    // Command: Show file exclusion information
+    const showFileExclusionsCommand = vscode.commands.registerCommand(
+      "vulnzap.showFileExclusions",
+      async () => {
+        Logger.info("Show file exclusions command called");
+
+        try {
+          const stats = await FileExclusionManager.getWorkspaceExclusionStats();
+          const patterns = FileExclusionManager.getExcludedPatterns();
+
+          const message =
+            `📊 VulnZap File Exclusion Statistics\n\n` +
+            `Total files in workspace: ${stats.totalFiles}\n` +
+            `Excluded from scanning: ${stats.excludedFiles}\n` +
+            `Supported for scanning: ${stats.supportedFiles}\n\n` +
+            `🚫 Excluded Extensions (${
+              patterns.extensions.length
+            }): ${patterns.extensions.slice(0, 10).join(", ")}${
+              patterns.extensions.length > 10 ? "..." : ""
+            }\n\n` +
+            `📁 Excluded Directories (${
+              patterns.directories.length
+            }): ${patterns.directories.slice(0, 8).join(", ")}${
+              patterns.directories.length > 8 ? "..." : ""
+            }\n\n` +
+            `📄 Common Excluded Files: package.json, tsconfig.json, webpack.config.js, .gitignore, README.md, etc.\n\n` +
+            `View full list in VS Code settings: vulnzap.excludeFilePatterns`;
+
+          await vscode.window
+            .showInformationMessage(
+              message,
+              { modal: true },
+              "Open Settings",
+              "View Output"
+            )
+            .then((selection) => {
+              if (selection === "Open Settings") {
+                vscode.commands.executeCommand(
+                  "workbench.action.openSettings",
+                  "vulnzap.excludeFilePatterns"
+                );
+              } else if (selection === "View Output") {
+                Logger.info("=== FILE EXCLUSION PATTERNS ===");
+                Logger.info(`Extensions: ${patterns.extensions.join(", ")}`);
+                Logger.info(`Directories: ${patterns.directories.join(", ")}`);
+                Logger.info(
+                  `Filenames: ${patterns.filenames.slice(0, 20).join(", ")}...`
+                );
+                Logger.info(`Patterns: ${patterns.patterns.join(", ")}`);
+                Logger.show();
+              }
+            });
+        } catch (error) {
+          Logger.error("Error showing file exclusions:", error as Error);
+          vscode.window.showErrorMessage(
+            "Error retrieving file exclusion information"
+          );
+        }
+      }
+    );
+
+    // Command: Optimize layout for VulnZap
+    const optimizeLayoutCommand = vscode.commands.registerCommand(
+      "vulnzap.optimizeLayout",
+      () => {
+        optimizeLayoutForVulnZap();
+      }
+    );
+
     console.log("VulnZap: All commands registered successfully");
 
     // Configuration change listener
@@ -865,14 +869,13 @@ export async function activate(context: vscode.ExtensionContext) {
       forceShow: boolean = false
     ) {
       try {
+        // Always notify webview that scan is starting (regardless of trigger source)
+        securityWebviewProvider.startScanLoading(document);
         const config = vscode.workspace.getConfiguration("vulnzap");
         const maxFileSize = config.get<number>("maxFileSizeBytes", 1000000);
         const maxFileLines = config.get<number>("maxFileLines", 2000);
         const maxIssues = config.get<number>("maxIssuesPerFile", 100);
-        const showScanNotification = config.get<boolean>(
-          "showScanNotification",
-          true
-        );
+        const showScanNotification = true; // Always show scan notifications (hardcoded)
         const fileSize = Buffer.byteLength(document.getText(), "utf8");
         const lineCount = document.lineCount;
 
@@ -883,6 +886,8 @@ export async function activate(context: vscode.ExtensionContext) {
           Logger.warn(
             `Skipping scan for large file: ${document.uri.fsPath} (${fileSize} bytes, ${lineCount} lines)`
           );
+          // Stop loading indicator since we're skipping the scan
+          securityWebviewProvider.stopScanLoading(document);
           updateStatusBar();
           return;
         }
@@ -890,8 +895,7 @@ export async function activate(context: vscode.ExtensionContext) {
         Logger.info("=== VULNZAP SCAN STARTING ===");
         Logger.info("Document:", document.uri.fsPath);
 
-        // Start loading indicator in security view
-        securityViewProvider.startScanLoading(document);
+        // Loading indicator already started at function beginning
 
         // Show cancellable progress notification (if enabled)
         const fileName = document.uri.fsPath.split(/[\\/]/).pop() || "file";
@@ -929,7 +933,7 @@ export async function activate(context: vscode.ExtensionContext) {
                 scanCancelled = true;
                 Logger.info("User cancelled security scan");
                 // Immediately clean up UI when cancelled
-                securityViewProvider.stopScanLoading(document);
+                securityWebviewProvider.stopScanLoading(document, true); // Pass cancelled=true
                 updateStatusBar(); // Reset status bar immediately
                 vscode.window.showInformationMessage(
                   "VulnZap: Security scan cancelled"
@@ -959,7 +963,7 @@ export async function activate(context: vscode.ExtensionContext) {
                 }
                 // Additional cleanup in case cancellation occurred during scan
                 scanCancelled = true;
-                securityViewProvider.stopScanLoading(document);
+                securityWebviewProvider.stopScanLoading(document, true); // Pass cancelled=true
                 updateStatusBar(); // Reset status bar
               }
             }
@@ -985,7 +989,7 @@ export async function activate(context: vscode.ExtensionContext) {
 
         // If scan was cancelled, clean up and return
         if (scanCancelled) {
-          securityViewProvider.stopScanLoading(document);
+          securityWebviewProvider.stopScanLoading(document, true); // Pass cancelled=true
           updateStatusBar();
           return;
         }
@@ -1001,7 +1005,9 @@ export async function activate(context: vscode.ExtensionContext) {
         Logger.info("=== SCAN COMPLETED ===");
         Logger.info("Found issues:", issues.length);
         diagnosticProvider.updateDiagnostics(document, issues);
-        securityViewProvider.updateSecurityIssues(document, issues);
+        securityWebviewProvider.updateSecurityIssues(document, issues);
+        // Always notify webview that scan is completed (regardless of trigger source)
+        securityWebviewProvider.stopScanLoading(document);
         updateStatusBar(); // Reset to normal status
 
         // Add notification for debugging
@@ -1028,7 +1034,7 @@ export async function activate(context: vscode.ExtensionContext) {
       } catch (error) {
         Logger.error("=== SCAN ERROR ===", error as Error);
         // Stop loading indicator on error
-        securityViewProvider.stopScanLoading(document);
+        securityWebviewProvider.stopScanLoading(document);
         updateStatusBar(); // Reset to normal status
         if (forceShow) {
           vscode.window.showErrorMessage("Error during security scan");
@@ -1119,7 +1125,7 @@ export async function activate(context: vscode.ExtensionContext) {
       toggleASTCommand,
       refreshSecurityViewCommand,
       clearAllIssuesCommand,
-      scanWorkspaceCommand,
+
       loginCommand,
       logoutCommand,
 
@@ -1131,6 +1137,8 @@ export async function activate(context: vscode.ExtensionContext) {
       showUpdateCommandCmd,
       fixAllDependenciesCommand,
       showOutputChannelCommand,
+      showFileExclusionsCommand,
+      optimizeLayoutCommand,
       configChangeListener,
       diagnosticProvider
     );
@@ -1140,13 +1148,14 @@ export async function activate(context: vscode.ExtensionContext) {
     if (
       isEnabled &&
       activeEditor &&
-      isSupportedLanguage(activeEditor.document.languageId)
+      isSupportedLanguage(activeEditor.document.languageId) &&
+      !FileExclusionManager.shouldExcludeFile(activeEditor.document.uri.fsPath)
     ) {
       Logger.debug("Active editor found, performing initial scan");
       scanDocument(activeEditor.document);
     } else {
       Logger.debug(
-        "No active editor or unsupported language, skipping initial scan"
+        "No active editor, unsupported language, or excluded file - skipping initial scan"
       );
     }
 
@@ -1158,9 +1167,15 @@ export async function activate(context: vscode.ExtensionContext) {
       setTimeout(async () => {
         try {
           Logger.info("Performing initial dependency scan...");
+          // Notify webview that dependency scan is starting
+          securityWebviewProvider.startDependencyScanLoading();
           await dependencyScanner.scanWorkspaceDependencies();
+          // Notify webview that dependency scan is completed
+          securityWebviewProvider.stopDependencyScanLoading();
         } catch (error) {
           Logger.error("Error during initial dependency scan:", error as Error);
+          // Notify webview that dependency scan failed/completed
+          securityWebviewProvider.stopDependencyScanLoading();
         }
       }, 2000); // Wait 2 seconds after activation to avoid blocking startup
     }
@@ -1172,6 +1187,74 @@ export async function activate(context: vscode.ExtensionContext) {
     Logger.error("Error in activate:", error as Error);
     vscode.window.showErrorMessage(
       "Error activating the extension: " + (error as Error).message
+    );
+  }
+}
+
+/**
+ * Suggests optimal VS Code layout for VulnZap extension
+ */
+function suggestOptimalLayout() {
+  // Check if this is the first time the extension is being used
+  const hasSeenLayoutTip = vscode.workspace
+    .getConfiguration("vulnzap")
+    .get("hasSeenLayoutTip", false);
+
+  if (!hasSeenLayoutTip) {
+    // Show layout optimization tip once
+    vscode.window
+      .showInformationMessage(
+        "🛡️ VulnZap works best with a wider sidebar. Would you like to optimize your layout?",
+        "Optimize Layout",
+        "Not Now",
+        "Don't Show Again"
+      )
+      .then((selection) => {
+        if (selection === "Optimize Layout") {
+          optimizeLayoutForVulnZap();
+        } else if (selection === "Don't Show Again") {
+          vscode.workspace
+            .getConfiguration("vulnzap")
+            .update(
+              "hasSeenLayoutTip",
+              true,
+              vscode.ConfigurationTarget.Global
+            );
+        }
+      });
+  }
+}
+
+/**
+ * Applies optimal layout settings for VulnZap
+ */
+async function optimizeLayoutForVulnZap() {
+  try {
+    // Focus on the VulnZap activity bar to ensure sidebar is visible
+    await vscode.commands.executeCommand(
+      "workbench.view.extension.vulnzap-security"
+    );
+
+    // Set sidebar to a reasonable width (this is a VS Code command that may work)
+    await vscode.commands.executeCommand(
+      "workbench.action.toggleSidebarVisibility"
+    );
+    await vscode.commands.executeCommand(
+      "workbench.action.toggleSidebarVisibility"
+    );
+
+    // Mark that user has seen the layout tip
+    await vscode.workspace
+      .getConfiguration("vulnzap")
+      .update("hasSeenLayoutTip", true, vscode.ConfigurationTarget.Global);
+
+    vscode.window.showInformationMessage(
+      "✅ Layout optimized! You can manually drag the sidebar edge to adjust width further."
+    );
+  } catch (error) {
+    Logger.error("Error optimizing layout:", error as Error);
+    vscode.window.showInformationMessage(
+      "💡 Tip: Drag the sidebar edge to make VulnZap wider for better viewing."
     );
   }
 }

@@ -241,7 +241,7 @@ export class DependencyScanner {
       "vulnzapApiUrl",
       "https://api.vulnzap.com"
     );
-    const timeout = config.get<number>("dependencyScanTimeout", 60000);
+    const timeout = 60000; // Hardcoded timeout: 60 seconds
 
     if (!apiKey) {
       vscode.window.showErrorMessage(
@@ -626,7 +626,7 @@ export class DependencyScanner {
     const projectHash = DependencyCache.generateProjectHash(projectPath);
 
     // Get configurable debounce time
-    const debounceTime = config.get<number>("dependencyScanDebounce", 5000);
+    const debounceTime = 5000; // Hardcoded debounce: 5 seconds
 
     // Debounce rapid saves
     const lastScanTime = this.lastScanTimes.get(projectHash) || 0;

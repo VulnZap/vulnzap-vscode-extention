@@ -1,0 +1,514 @@
+body {
+  font-family: var(--vscode-font-family);
+  background-color: var(--vscode-editor-background);
+  color: var(--vscode-editor-foreground);
+  margin: 0;
+  padding: 0;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+#security-container {
+  padding: 16px 24px 16px 16px; /* Added extra padding on the right */
+  max-width: 100%;
+  min-width: 320px; /* Minimum width for proper display */
+  width: 100%;
+  box-sizing: border-box;
+}
+
+/* Header Styles */
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 24px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--vscode-widget-border);
+}
+
+.logo-section {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.logo-svg {
+  width: 32px;
+  height: 32px;
+  color: var(--vscode-textLink-foreground);
+}
+
+.header h1 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--vscode-editor-foreground);
+}
+
+.action-buttons {
+  display: flex;
+  gap: 8px;
+}
+
+.action-btn {
+  background-color: var(--vscode-button-background);
+  color: var(--vscode-button-foreground);
+  border: none;
+  border-radius: 4px;
+  padding: 6px 12px;
+  font-size: 12px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transition: background-color 0.2s ease;
+}
+
+.action-btn:hover {
+  background-color: var(--vscode-button-hoverBackground);
+}
+
+.action-btn .icon {
+  font-size: 14px;
+}
+
+/* Section Styles */
+.section {
+  margin-bottom: 24px;
+  background-color: var(--vscode-editor-inactiveSelectionBackground);
+  border: 1px solid var(--vscode-widget-border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 20px 12px 16px; /* Added extra right padding */
+  background-color: var(--vscode-titleBar-inactiveBackground);
+  border-bottom: 1px solid var(--vscode-widget-border);
+}
+
+.section-header h2 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--vscode-editor-foreground);
+}
+
+.section-actions {
+  display: flex;
+  gap: 8px;
+}
+
+/* Statistics Grid */
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+  gap: 12px;
+  padding: 16px 20px 16px 16px; /* Added extra right padding */
+}
+
+.stat-card {
+  text-align: center;
+  padding: 12px 8px;
+  background-color: var(--vscode-editor-background);
+  border: 1px solid var(--vscode-widget-border);
+  border-radius: 4px;
+  transition: background-color 0.2s ease;
+}
+
+.stat-card:hover {
+  background-color: var(--vscode-list-hoverBackground);
+}
+
+.stat-value {
+  font-size: 24px;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
+.stat-label {
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* Severity Colors */
+.stat-card.critical .stat-value {
+  color: #ff6b6b;
+}
+
+.stat-card.high .stat-value {
+  color: #ffa726;
+}
+
+.stat-card.medium .stat-value {
+  color: #ffeb3b;
+}
+
+.stat-card.low .stat-value {
+  color: #66bb6a;
+}
+
+/* Filter Controls */
+.filter-controls {
+  display: flex;
+  gap: 8px;
+}
+
+.filter-controls select {
+  background-color: var(--vscode-dropdown-background);
+  color: var(--vscode-dropdown-foreground);
+  border: 1px solid var(--vscode-dropdown-border);
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+/* Vulnerabilities List */
+.vulnerabilities-list,
+.issues-list,
+.scans-list {
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.vulnerability-item,
+.issue-item,
+.scan-item {
+  padding: 12px 20px 12px 16px; /* Added extra right padding */
+  border-bottom: 1px solid var(--vscode-widget-border);
+  transition: background-color 0.2s ease;
+}
+
+.vulnerability-item:hover,
+.issue-item:hover,
+.scan-item:hover {
+  background-color: var(--vscode-list-hoverBackground);
+}
+
+.vulnerability-item:last-child,
+.issue-item:last-child,
+.scan-item:last-child {
+  border-bottom: none;
+}
+
+/* Vulnerability Item */
+.vulnerability-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 8px;
+}
+
+.vulnerability-title {
+  font-weight: 600;
+  color: var(--vscode-editor-foreground);
+  margin-bottom: 4px;
+}
+
+.vulnerability-package {
+  font-size: 12px;
+  color: var(--vscode-descriptionForeground);
+  font-family: var(--vscode-editor-font-family);
+}
+
+.vulnerability-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.fix-btn {
+  background-color: var(--vscode-button-secondaryBackground);
+  color: var(--vscode-button-secondaryForeground);
+  border: none;
+  border-radius: 3px;
+  padding: 4px 8px;
+  font-size: 11px;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.fix-btn:hover {
+  background-color: var(--vscode-button-secondaryHoverBackground);
+}
+
+.vulnerability-details {
+  font-size: 12px;
+  color: var(--vscode-descriptionForeground);
+  line-height: 1.4;
+}
+
+.severity-badge {
+  display: inline-block;
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.severity-critical {
+  background-color: rgba(255, 107, 107, 0.2);
+  color: #ff6b6b;
+}
+
+.severity-high {
+  background-color: rgba(255, 167, 38, 0.2);
+  color: #ffa726;
+}
+
+.severity-medium {
+  background-color: rgba(255, 235, 59, 0.2);
+  color: #ffeb3b;
+}
+
+.severity-low {
+  background-color: rgba(102, 187, 106, 0.2);
+  color: #66bb6a;
+}
+
+/* Issue Item */
+.issue-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 6px;
+}
+
+.issue-message {
+  font-weight: 500;
+  color: var(--vscode-editor-foreground);
+  margin-bottom: 4px;
+}
+
+.issue-location {
+  font-size: 12px;
+  color: var(--vscode-descriptionForeground);
+  font-family: var(--vscode-editor-font-family);
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.issue-location:hover {
+  color: var(--vscode-textLink-foreground);
+}
+
+.issue-details {
+  font-size: 12px;
+  color: var(--vscode-descriptionForeground);
+  margin-top: 6px;
+}
+
+/* Scan Item */
+.scan-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 4px;
+}
+
+.scan-type {
+  font-weight: 500;
+  color: var(--vscode-editor-foreground);
+}
+
+.scan-time {
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground);
+}
+
+.scan-results {
+  font-size: 12px;
+  color: var(--vscode-descriptionForeground);
+}
+
+/* Empty States */
+.empty-state {
+  text-align: center;
+  padding: 32px 20px 32px 16px; /* Added extra right padding */
+  color: var(--vscode-descriptionForeground);
+}
+
+.empty-state-icon {
+  font-size: 48px;
+  margin-bottom: 12px;
+  opacity: 0.5;
+}
+
+.empty-state-message {
+  font-size: 14px;
+  margin-bottom: 8px;
+}
+
+.empty-state-description {
+  font-size: 12px;
+  opacity: 0.7;
+}
+
+/* Loading States */
+.loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px 28px 24px 24px; /* Added extra right padding */
+  color: var(--vscode-descriptionForeground);
+}
+
+.loading-spinner {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--vscode-progressBar-background);
+  border-radius: 50%;
+  border-top-color: var(--vscode-textLink-foreground);
+  animation: spin 1s ease-in-out infinite;
+  margin-right: 8px;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Responsive Design - Better handling for narrow sidebars */
+@media (max-width: 400px) {
+  #security-container {
+    padding: 12px 18px 12px 12px; /* Maintain right padding even on narrow screens */
+    min-width: 280px;
+  }
+
+  .header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  .logo-section h1 {
+    font-size: 16px;
+  }
+
+  .action-buttons {
+    width: 100%;
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+
+  .action-btn {
+    flex: 1;
+    min-width: 80px;
+    padding: 4px 8px;
+    font-size: 11px;
+  }
+
+  .stats-grid {
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+  }
+
+  .stat-card {
+    padding: 8px 4px;
+  }
+
+  .stat-value {
+    font-size: 18px;
+  }
+
+  .stat-label {
+    font-size: 10px;
+  }
+
+  .section-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+  }
+
+  .section-header h2 {
+    font-size: 13px;
+  }
+
+  .filter-controls {
+    width: 100%;
+    gap: 4px;
+  }
+
+  .filter-controls select {
+    flex: 1;
+    font-size: 11px;
+    padding: 3px 6px;
+  }
+}
+
+@media (max-width: 600px) and (min-width: 401px) {
+  .header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+
+  .action-buttons {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .stats-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .section-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  .filter-controls {
+    width: 100%;
+  }
+
+  .filter-controls select {
+    flex: 1;
+  }
+}
+
+/* Sidebar width hint for users */
+.width-hint {
+  background-color: var(--vscode-notificationsInfoIcon-foreground);
+  color: var(--vscode-editor-background);
+  padding: 8px 16px 8px 12px; /* Added extra right padding */
+  border-radius: 4px;
+  font-size: 12px;
+  margin-bottom: 12px;
+  text-align: center;
+  display: none;
+}
+
+@media (max-width: 350px) {
+  .width-hint {
+    display: block;
+  }
+}
+
+/* Scrollbar Styling */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--vscode-scrollbarSlider-background);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--vscode-scrollbarSlider-activeBackground);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--vscode-scrollbarSlider-hoverBackground);
+}

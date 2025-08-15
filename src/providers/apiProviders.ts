@@ -416,7 +416,7 @@ export class VulnZapProvider implements APIProvider {
       }
 
       const startTime = Date.now();
-      const fastScan = config.get("enableFastScan", true);
+      const fastScan = true; // Hardcoded: always enable fast scan
 
       try {
         // Use text-based analysis (AST removed for simplicity and speed)
@@ -536,8 +536,8 @@ export class VulnZapProvider implements APIProvider {
 
     // Step 2: Poll for results with exponential backoff (no timeout)
     const config = vscode.workspace.getConfiguration("vulnzap");
-    const initialPollingInterval = config.get("initialPollingInterval", 15000); // Default 15 seconds
-    const maxPollingInterval = config.get("maxPollingInterval", 60000); // Default 60 seconds
+    const initialPollingInterval = 15000; // Hardcoded: 15 seconds
+    const maxPollingInterval = 60000; // Hardcoded: 60 seconds
 
     // Get file info for logging
     const fileSizeKB = Buffer.byteLength(code, "utf8") / 1024;
@@ -562,7 +562,7 @@ export class VulnZapProvider implements APIProvider {
     const startTime = Date.now();
     let pollingInterval = initialPollingInterval;
     let attempt = 0;
-    const maxPollingAttempts = config.get("maxPollingAttempts", 1000); // Failsafe: max 1000 attempts
+    const maxPollingAttempts = 1000; // Hardcoded: max 1000 attempts
 
     // Poll until job completes, fails, or we hit the failsafe limit
     while (attempt < maxPollingAttempts) {

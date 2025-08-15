@@ -25,7 +25,7 @@ interface SecurityIssue {
 export class DiagnosticProvider {
   private diagnosticCollection: vscode.DiagnosticCollection;
   private context: vscode.ExtensionContext;
-  private securityViewProvider?: any;
+  private securityWebviewProvider?: any;
   private documentChangeListener?: vscode.Disposable;
   private documentsWithDiagnostics: Set<string> = new Set();
 
@@ -109,12 +109,12 @@ export class DiagnosticProvider {
       } (${currentDiagnostics.length - finalDiagnostics.length} cleared)`
     );
 
-    // Update security view if available
+    // Update security webview if available
     if (
-      this.securityViewProvider &&
+      this.securityWebviewProvider &&
       currentDiagnostics.length !== finalDiagnostics.length
     ) {
-      this.securityViewProvider.refresh();
+      this.securityWebviewProvider.refresh();
     }
   }
 
@@ -208,8 +208,8 @@ export class DiagnosticProvider {
   /**
    * Links this provider with the security view for synchronized updates
    */
-  setSecurityViewProvider(provider: any): void {
-    this.securityViewProvider = provider;
+  setSecurityWebviewProvider(provider: any): void {
+    this.securityWebviewProvider = provider;
   }
 
   /**
@@ -261,6 +261,14 @@ export class DiagnosticProvider {
       this.documentsWithDiagnostics.add(documentUri);
     } else {
       this.documentsWithDiagnostics.delete(documentUri);
+    }
+
+    // Update security webview with the new issues
+    if (this.securityWebviewProvider) {
+      this.securityWebviewProvider.updateIssuesFromDiagnostics(
+        document.uri,
+        diagnostics
+      );
     }
 
     Logger.debug(

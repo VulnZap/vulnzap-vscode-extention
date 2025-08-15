@@ -59,7 +59,7 @@ export class DependencyCache {
      */
     private getCacheExpiryMs(): number {
         const config = vscode.workspace.getConfiguration('vulnzap');
-        const days = config.get<number>('dependencyCacheExpiry', DependencyCache.DEFAULT_CACHE_EXPIRY_DAYS);
+        const days = 5; // Hardcoded: 5 days cache expiry
         return days * 24 * 60 * 60 * 1000;
     }
 

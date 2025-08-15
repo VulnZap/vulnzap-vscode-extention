@@ -88,11 +88,6 @@
         "icon": "$(clear-all)"
       },
       {
-        "command": "vulnzap.scanWorkspace",
-        "title": "Scan Entire Workspace",
-        "icon": "$(search)"
-      },
-      {
         "command": "vulnzap.login",
         "title": "Log In to VulnZap",
         "category": "Security"
@@ -150,6 +145,18 @@
         "title": "Show VulnZap Output Logs",
         "category": "Security",
         "icon": "$(output)"
+      },
+      {
+        "command": "vulnzap.optimizeLayout",
+        "title": "Optimize Layout for VulnZap",
+        "category": "Security",
+        "icon": "$(layout)"
+      },
+      {
+        "command": "vulnzap.showFileExclusions",
+        "title": "Show File Exclusion Information",
+        "category": "Security",
+        "icon": "$(info)"
       }
     ],
     "viewsContainers": {
@@ -172,7 +179,8 @@
         {
           "id": "vulnzap.securityView",
           "name": "Security Analysis",
-          "when": "vulnzap.loggedIn"
+          "when": "vulnzap.loggedIn",
+          "type": "webview"
         }
       ]
     },
@@ -211,10 +219,6 @@
           "when": "true"
         },
         {
-          "command": "vulnzap.scanWorkspace",
-          "when": "true"
-        },
-        {
           "command": "vulnzap.scanDependencies",
           "when": "true"
         },
@@ -249,16 +253,15 @@
         {
           "command": "vulnzap.logout",
           "when": "true"
+        },
+        {
+          "command": "vulnzap.showFileExclusions",
+          "when": "true"
         }
       ],
       "view/title": [
         {
           "command": "vulnzap.refreshSecurityView",
-          "when": "view == vulnzap.securityView",
-          "group": "navigation"
-        },
-        {
-          "command": "vulnzap.scanWorkspace",
           "when": "view == vulnzap.securityView",
           "group": "navigation"
         },
@@ -295,16 +298,6 @@
           "default": true,
           "description": "Enable/disable on-save security scanning"
         },
-        "vulnzap.scanDelay": {
-          "type": "number",
-          "default": 1000,
-          "description": "Delay in milliseconds for debouncing scans (currently unused as scans run immediately on save)"
-        },
-        "vulnzap.enableFastScan": {
-          "type": "boolean",
-          "default": true,
-          "description": "Enable fast scanning mode for faster results (may reduce accuracy slightly)"
-        },
         "vulnzap.severity": {
           "type": "string",
           "enum": [
@@ -330,73 +323,25 @@
           "default": "",
           "description": "Selected API provider for VulnZap analysis"
         },
-        "vulnzap.enableAIAnalysis": {
-          "type": "boolean",
-          "default": true,
-          "description": "Enable AI-powered security analysis (requires API keys)"
-        },
-        "vulnzap.enableASTPrecision": {
-          "type": "boolean",
-          "default": true,
-          "description": "Enable AST-guided precision analysis for exact vulnerability positioning (JavaScript/TypeScript only)"
-        },
-        "vulnzap.confidenceThreshold": {
-          "type": "number",
-          "default": 80,
-          "minimum": 50,
-          "maximum": 100,
-          "description": "Minimum confidence threshold (50-100%) for reporting security issues. Higher values reduce false positives."
-        },
-        "vulnzap.enableContextAnalysis": {
-          "type": "boolean",
-          "default": true,
-          "description": "Enable context-aware analysis to reduce false positives by understanding code purpose and environment"
-        },
-        "vulnzap.enableTestFileFiltering": {
-          "type": "boolean",
-          "default": true,
-          "description": "Filter out security issues in test files that are typically acceptable in testing contexts"
-        },
-        "vulnzap.enableDataFlowAnalysis": {
-          "type": "boolean",
-          "default": true,
-          "description": "Analyze data flow to better understand if user input reaches vulnerable functions"
-        },
         "vulnzap.enableDependencyScanning": {
           "type": "boolean",
           "default": true,
           "description": "Enable automatic dependency vulnerability scanning when dependency files are saved"
-        },
-        "vulnzap.dependencyScanTimeout": {
-          "type": "number",
-          "default": 60000,
-          "minimum": 10000,
-          "maximum": 300000,
-          "description": "Timeout in milliseconds for dependency vulnerability scans"
-        },
-        "vulnzap.dependencyCacheExpiry": {
-          "type": "number",
-          "default": 5,
-          "minimum": 1,
-          "maximum": 30,
-          "description": "Number of days to cache dependency scan results before rescanning"
         },
         "vulnzap.dependencyScanOnStartup": {
           "type": "boolean",
           "default": true,
           "description": "Automatically scan dependencies when workspace is opened"
         },
-        "vulnzap.dependencyScanDebounce": {
-          "type": "number",
-          "default": 5000,
-          "minimum": 1000,
-          "maximum": 30000,
-          "description": "Debounce time in milliseconds to prevent rapid dependency scans"
-        },
         "vulnzap.enableDebugLogging": {
           "type": "boolean",
           "default": false,
           "description": "Enable detailed debug logging for troubleshooting (visible in VulnZap output channel)"
+        },
+        "vulnzap.hasSeenLayoutTip": {
+          "type": "boolean",
+          "default": false,
+          "description": "Whether user has seen the layout optimization tip"
         },
         "vulnzap.maxFileSizeBytes": {
           "type": "number",
@@ -420,20 +365,6 @@
           "maximum": 10,
           "description": "Number of retry attempts for API calls when rate limited. Default: 3"
         },
-        "vulnzap.initialPollingInterval": {
-          "type": "number",
-          "default": 15000,
-          "minimum": 5000,
-          "maximum": 60000,
-          "description": "Initial polling interval in milliseconds for checking scan job status. Default: 15 seconds"
-        },
-        "vulnzap.maxPollingInterval": {
-          "type": "number",
-          "default": 60000,
-          "minimum": 15000,
-          "maximum": 300000,
-          "description": "Maximum polling interval in milliseconds (with exponential backoff). Default: 60 seconds"
-        },
         "vulnzap.requestQueueDelay": {
           "type": "number",
           "default": 500,
@@ -441,17 +372,13 @@
           "maximum": 5000,
           "description": "Delay in milliseconds between queued API requests to prevent overwhelming the server. Default: 500ms"
         },
-        "vulnzap.maxPollingAttempts": {
-          "type": "number",
-          "default": 1000,
-          "minimum": 100,
-          "maximum": 10000,
-          "description": "Failsafe maximum number of polling attempts before giving up (prevents infinite loops). Default: 1000"
-        },
-        "vulnzap.showScanNotification": {
-          "type": "boolean",
-          "default": true,
-          "description": "Show cancellable notification when security scan starts. Disable for silent scanning."
+        "vulnzap.excludeFilePatterns": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "Additional file patterns to exclude from security scanning (supports glob patterns like *.config.js, test/**/*.js). Built-in exclusions include package.json, node_modules/, dist/, etc."
         }
       }
     }
