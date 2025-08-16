@@ -5,11 +5,13 @@ import { DependencyDiagnosticProvider } from "../providers/dependencyDiagnosticP
 import { APIProviderManager } from "../providers/apiProviders";
 import { SecurityWebviewProvider } from "../webview/SecurityWebviewProvider";
 import { LoginWebviewProvider } from "../webview/LoginWebviewProvider";
+import { UsageBarWebviewProvider } from "../webview/UsageBarWebviewProvider";
 
 import { CodebaseSecurityAnalyzer } from "../security/codebaseSecurityAnalyzer";
 import { DependencyScanner } from "../dependencies/dependencyScanner";
 import { Logger } from "../utils/logger";
 import { FileExclusionManager } from "../utils/fileExclusions";
+import { UsageService } from "../utils/usageService";
 
 /**
  * Main extension activation function
@@ -36,6 +38,10 @@ export async function activate(context: vscode.ExtensionContext) {
       context.extensionUri,
       context
     );
+    const usageBarWebviewProvider = new UsageBarWebviewProvider(
+      context.extensionUri,
+      context
+    );
     const dependencyScanner = new DependencyScanner(context);
 
     // Register the security webview in the sidebar
@@ -50,8 +56,27 @@ export async function activate(context: vscode.ExtensionContext) {
       loginWebviewProvider
     );
 
+    // Register the usage bar webview provider
+    vscode.window.registerWebviewViewProvider(
+      UsageBarWebviewProvider.viewType,
+      usageBarWebviewProvider
+    );
+
+    // Initialize usage service
+    const usageService = UsageService.getInstance(context);
+
     // Set initial context based on login status
     updateLoginContext();
+
+    // Start usage tracking
+    setTimeout(async () => {
+      // Start periodic usage refresh
+      const refreshDisposable = usageService.startPeriodicRefresh();
+      context.subscriptions.push(refreshDisposable);
+
+      // Fetch initial user profile and usage data
+      await usageService.refreshAll();
+    }, 1000); // Wait a second after activation
 
     // Suggest optimal layout for VulnZap when extension activates
     suggestOptimalLayout();
@@ -381,7 +406,15 @@ export async function activate(context: vscode.ExtensionContext) {
           // 5. Update context and refresh views
           updateLoginContext();
           securityWebviewProvider.refresh();
+          usageBarWebviewProvider.refresh();
           updateStatusBar(); // Update status bar to show logged in state
+
+          // Start periodic usage refresh
+          const refreshDisposable = usageService.startPeriodicRefresh();
+          context.subscriptions.push(refreshDisposable);
+
+          // Fetch initial user profile and usage data
+          usageService.refreshAll();
         } catch (err: any) {
           vscode.window.showErrorMessage(
             "VulnZap: Login failed: " + err.message
@@ -433,6 +466,7 @@ export async function activate(context: vscode.ExtensionContext) {
           securityWebviewProvider.clearDependencyVulnerabilities();
           updateLoginContext();
           securityWebviewProvider.refresh();
+          usageBarWebviewProvider.refresh();
           updateStatusBar(); // Update status bar to show login required
 
           vscode.window.showInformationMessage(
@@ -498,6 +532,9 @@ export async function activate(context: vscode.ExtensionContext) {
           vscode.window.showErrorMessage(
             "Error scanning dependencies: " + (error as Error).message
           );
+        } finally {
+          // Refresh usage data after dependency scan attempt
+          usageService.fetchUsageData();
         }
       }
     );
@@ -1010,6 +1047,9 @@ export async function activate(context: vscode.ExtensionContext) {
         securityWebviewProvider.stopScanLoading(document);
         updateStatusBar(); // Reset to normal status
 
+        // Refresh usage data after scan completion
+        usageService.fetchUsageData();
+
         // Add notification for debugging
         if (issues.length > 0) {
           const issueDetails = issues
@@ -1140,7 +1180,8 @@ export async function activate(context: vscode.ExtensionContext) {
       showFileExclusionsCommand,
       optimizeLayoutCommand,
       configChangeListener,
-      diagnosticProvider
+      diagnosticProvider,
+      usageBarWebviewProvider
     );
 
     // Initial scan if there's an active editor
