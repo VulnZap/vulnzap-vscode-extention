@@ -159,7 +159,7 @@ body {
 .progress-bar {
   flex: 1;
   height: 8px;
-  background: var(--vscode-progressBar-background);
+  background: #636263;
   border-radius: 4px;
   overflow: hidden;
   position: relative;

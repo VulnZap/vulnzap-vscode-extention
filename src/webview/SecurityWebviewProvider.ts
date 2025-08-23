@@ -78,6 +78,9 @@ export class SecurityWebviewProvider implements vscode.WebviewViewProvider {
           case "showOutputLogs":
             vscode.commands.executeCommand("vulnzap.showOutputChannel");
             break;
+          case "fixAllDependencies":
+            vscode.commands.executeCommand("vulnzap.fixAllDependencies");
+            break;
         }
       },
       undefined,

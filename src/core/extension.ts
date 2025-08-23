@@ -608,64 +608,6 @@ export async function activate(context: vscode.ExtensionContext) {
       }
     );
 
-    const dependencyCacheStatsCommand = vscode.commands.registerCommand(
-      "vulnzap.dependencyCacheStats",
-      async () => {
-        console.log("VulnZap: Dependency cache stats command called");
-
-        try {
-          const stats = await dependencyScanner.getCacheInfo();
-          const oldestDate = stats.oldestEntry
-            ? new Date(stats.oldestEntry).toLocaleString()
-            : "N/A";
-          const newestDate = stats.newestEntry
-            ? new Date(stats.newestEntry).toLocaleString()
-            : "N/A";
-          const sizeInMB = (stats.totalSize / (1024 * 1024)).toFixed(2);
-
-          const message =
-            `📊 Dependency Cache Statistics\n\n` +
-            `Total Entries: ${stats.totalEntries}\n` +
-            `Total Size: ${sizeInMB} MB\n` +
-            `Expired Entries: ${stats.expiredEntries}\n` +
-            `Oldest Entry: ${oldestDate}\n` +
-            `Newest Entry: ${newestDate}`;
-
-          vscode.window
-            .showInformationMessage(message, "Clean Cache")
-            .then((selection) => {
-              if (selection === "Clean Cache") {
-                vscode.commands.executeCommand("vulnzap.cleanDependencyCache");
-              }
-            });
-        } catch (error) {
-          console.error("Error getting cache stats:", error);
-          vscode.window.showErrorMessage(
-            "Error getting cache statistics: " + (error as Error).message
-          );
-        }
-      }
-    );
-
-    const cleanDependencyCacheCommand = vscode.commands.registerCommand(
-      "vulnzap.cleanDependencyCache",
-      async () => {
-        console.log("VulnZap: Clean dependency cache command called");
-
-        try {
-          const cleanedCount = await dependencyScanner.cleanupCache();
-          vscode.window.showInformationMessage(
-            `🧹 Cleaned up ${cleanedCount} expired cache entries.`
-          );
-        } catch (error) {
-          console.error("Error cleaning cache:", error);
-          vscode.window.showErrorMessage(
-            "Error cleaning cache: " + (error as Error).message
-          );
-        }
-      }
-    );
-
     // Dependency Fix Commands
     const updateDependencyToVersionCommand = vscode.commands.registerCommand(
       "vulnzap.updateDependencyToVersion",
@@ -1196,8 +1138,6 @@ export async function activate(context: vscode.ExtensionContext) {
 
       scanDependenciesCommand,
       forceDependencyScanCommand,
-      dependencyCacheStatsCommand,
-      cleanDependencyCacheCommand,
       updateDependencyToVersionCommand,
       showUpdateCommandCmd,
       fixAllDependenciesCommand,

@@ -66,7 +66,6 @@ export interface BatchScanResponse {
  */
 export class DependencyScanner {
   private parser: DependencyParser;
-  private cache: DependencyCache;
   private context: vscode.ExtensionContext;
   private dependencyDiagnosticProvider?: any; // Will be set by extension.ts
 
@@ -80,7 +79,6 @@ export class DependencyScanner {
   constructor(context: vscode.ExtensionContext) {
     this.context = context;
     this.parser = new DependencyParser();
-    this.cache = new DependencyCache(context);
   }
 
   /**
@@ -169,17 +167,6 @@ export class DependencyScanner {
         `Found ${dependencies.length} dependencies in ${projectPath}`
       );
 
-      // Check cache first
-      const cachedResult = await this.cache.getCachedScanResult(
-        projectHash,
-        dependencies
-      );
-      if (cachedResult) {
-        console.log(`Using cached scan result for ${projectPath}`);
-        this.showScanResults(cachedResult);
-        return cachedResult;
-      }
-
       try {
         // Perform fresh scan via API
         console.log(`Performing fresh vulnerability scan for ${projectPath}`);
@@ -190,9 +177,6 @@ export class DependencyScanner {
         );
 
         if (scanResult) {
-          // Cache the results
-          await this.cache.storeScanResult(scanResult, dependencies);
-
           // Update last scan time
           this.lastScanTimes.set(projectHash, Date.now());
 
@@ -639,9 +623,6 @@ export class DependencyScanner {
       return;
     }
 
-    // Clear cache for this project since dependencies may have changed
-    await this.cache.deleteCacheEntry(projectHash);
-
     // Trigger async scan
     this.scanProjectDependencies(projectPath).catch((error) => {
       console.error("Error during automatic dependency scan:", error);
@@ -673,26 +654,11 @@ export class DependencyScanner {
   async forceScan(projectPath?: string): Promise<DependencyScanResult[]> {
     if (projectPath) {
       const projectHash = DependencyCache.generateProjectHash(projectPath);
-      await this.cache.deleteCacheEntry(projectHash);
+
       const result = await this.scanProjectDependencies(projectPath);
       return result ? [result] : [];
     } else {
-      await this.cache.clearAllCache();
       return this.scanWorkspaceDependencies();
     }
-  }
-
-  /**
-   * Gets cache statistics
-   */
-  async getCacheInfo(): Promise<any> {
-    return this.cache.getCacheStats();
-  }
-
-  /**
-   * Cleans up expired cache entries
-   */
-  async cleanupCache(): Promise<number> {
-    return this.cache.cleanupExpiredEntries();
   }
 }
