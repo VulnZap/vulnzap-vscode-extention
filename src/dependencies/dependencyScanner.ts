@@ -239,7 +239,7 @@ export class DependencyScanner {
     const apiKey = config.get<string>("vulnzapApiKey");
     const apiUrl = config.get<string>(
       "vulnzapApiUrl",
-      "https://api.vulnzap.com"
+      "https://engine.vulnzap.com"
     );
     const timeout = 60000; // Hardcoded timeout: 60 seconds
 

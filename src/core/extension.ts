@@ -112,6 +112,13 @@ export async function activate(context: vscode.ExtensionContext) {
       async (document) => {
         if (!isEnabled) return;
 
+        // Check if user is logged in before proceeding
+        const session = context.globalState.get("vulnzapSession");
+        if (!session) {
+          Logger.debug("User not logged in, skipping file save scan");
+          return;
+        }
+
         // Check if this is a dependency file and trigger dependency scan
         await dependencyScanner.onFileSaved(document);
 
@@ -143,6 +150,16 @@ export async function activate(context: vscode.ExtensionContext) {
       "vulnzap.enable",
       () => {
         Logger.info("Enable command called");
+
+        // Check if user is logged in before enabling
+        const session = context.globalState.get("vulnzapSession");
+        if (!session) {
+          vscode.window.showWarningMessage(
+            "Please sign in to VulnZap before enabling security scanning."
+          );
+          return;
+        }
+
         isEnabled = true;
         vscode.workspace
           .getConfiguration("vulnzap")
@@ -199,6 +216,16 @@ export async function activate(context: vscode.ExtensionContext) {
       "vulnzap.scanFile",
       async () => {
         console.log("VulnZap: Scan file command called");
+
+        // Check if user is logged in before scanning
+        const session = context.globalState.get("vulnzapSession");
+        if (!session) {
+          vscode.window.showWarningMessage(
+            "Please sign in to VulnZap before scanning files."
+          );
+          return;
+        }
+
         const activeEditor = vscode.window.activeTextEditor;
         if (!activeEditor) {
           vscode.window.showWarningMessage("No active file to scan");
@@ -248,32 +275,6 @@ export async function activate(context: vscode.ExtensionContext) {
           vscode.window.showErrorMessage(
             "Error configuring API keys: " + (error as Error).message
           );
-        }
-      }
-    );
-
-    // Command: Toggle AST-guided precision analysis
-    const toggleASTCommand = vscode.commands.registerCommand(
-      "vulnzap.toggleASTPrecision",
-      async () => {
-        console.log("VulnZap: Toggle AST precision command called");
-        const config = vscode.workspace.getConfiguration("vulnzap");
-        // AST precision is always enabled (hardcoded)
-        console.log("AST precision is always enabled (cannot be toggled)");
-        vscode.window.showInformationMessage(
-          "✅ AST-guided precision analysis is always enabled"
-        );
-
-        // Rescan current file if one is open
-        const activeEditor = vscode.window.activeTextEditor;
-        if (
-          activeEditor &&
-          isEnabled &&
-          !FileExclusionManager.shouldExcludeFile(
-            activeEditor.document.uri.fsPath
-          )
-        ) {
-          await scanDocument(activeEditor.document, true);
         }
       }
     );
@@ -482,6 +483,15 @@ export async function activate(context: vscode.ExtensionContext) {
       async () => {
         console.log("VulnZap: Scan dependencies command called");
 
+        // Check if user is logged in before scanning
+        const session = context.globalState.get("vulnzapSession");
+        if (!session) {
+          vscode.window.showWarningMessage(
+            "Please sign in to VulnZap before scanning dependencies."
+          );
+          return;
+        }
+
         try {
           // Notify webview that dependency scan is starting
           securityWebviewProvider.startDependencyScanLoading();
@@ -543,6 +553,15 @@ export async function activate(context: vscode.ExtensionContext) {
       "vulnzap.forceDependencyScan",
       async () => {
         console.log("VulnZap: Force dependency scan command called");
+
+        // Check if user is logged in before scanning
+        const session = context.globalState.get("vulnzapSession");
+        if (!session) {
+          vscode.window.showWarningMessage(
+            "Please sign in to VulnZap before scanning dependencies."
+          );
+          return;
+        }
 
         try {
           await vscode.window.withProgress(
@@ -906,6 +925,13 @@ export async function activate(context: vscode.ExtensionContext) {
       forceShow: boolean = false
     ) {
       try {
+        // Check if user is logged in before proceeding with scan
+        const session = context.globalState.get("vulnzapSession");
+        if (!session) {
+          Logger.debug("User not logged in, skipping security scan");
+          return;
+        }
+
         // Always notify webview that scan is starting (regardless of trigger source)
         securityWebviewProvider.startScanLoading(document);
         const config = vscode.workspace.getConfiguration("vulnzap");
@@ -1162,7 +1188,6 @@ export async function activate(context: vscode.ExtensionContext) {
       scanFileCommand,
       selectApiProviderCommand,
       configureApiKeysCommand,
-      toggleASTCommand,
       refreshSecurityViewCommand,
       clearAllIssuesCommand,
 
@@ -1186,8 +1211,10 @@ export async function activate(context: vscode.ExtensionContext) {
 
     // Initial scan if there's an active editor
     const activeEditor = vscode.window.activeTextEditor;
+    const session = context.globalState.get("vulnzapSession");
     if (
       isEnabled &&
+      session && // Only scan if user is logged in
       activeEditor &&
       isSupportedLanguage(activeEditor.document.languageId) &&
       !FileExclusionManager.shouldExcludeFile(activeEditor.document.uri.fsPath)
@@ -1196,7 +1223,7 @@ export async function activate(context: vscode.ExtensionContext) {
       scanDocument(activeEditor.document);
     } else {
       Logger.debug(
-        "No active editor, unsupported language, or excluded file - skipping initial scan"
+        "No active editor, unsupported language, excluded file, or user not logged in - skipping initial scan"
       );
     }
 
@@ -1204,7 +1231,8 @@ export async function activate(context: vscode.ExtensionContext) {
     const dependencyScanOnStartup = vscode.workspace
       .getConfiguration("vulnzap")
       .get<boolean>("dependencyScanOnStartup", true);
-    if (dependencyScanOnStartup) {
+    if (dependencyScanOnStartup && session) {
+      // Only scan if user is logged in
       setTimeout(async () => {
         try {
           Logger.info("Performing initial dependency scan...");
