@@ -221,9 +221,13 @@ function updateDependencyVulnerabilities() {
         <div class="vulnerability-item">
           <div class="vulnerability-header">
             <div>
-              <div class="vulnerability-title">${vuln.title || vuln.id}</div>
+              <div class="vulnerability-title">${
+                vuln.cveId ||
+                vuln.description?.substring(0, 50) ||
+                "Vulnerability"
+              }</div>
               <div class="vulnerability-package">${packageName}@${
-        vuln.vulnerable_versions || "unknown"
+        vuln.packageVersion || "unknown"
       }</div>
             </div>
             <div class="vulnerability-actions">
@@ -231,15 +235,20 @@ function updateDependencyVulnerabilities() {
                 vuln.severity || "medium"
               }">${vuln.severity || "medium"}</span>
               <button class="fix-btn" onclick="fixVulnerability('${
-                vuln.id
+                vuln.cveId || vuln.packageName
               }')">Fix</button>
             </div>
           </div>
           <div class="vulnerability-details">
-            ${vuln.overview || vuln.description || "No description available"}
+            ${vuln.description || "No description available"}
             ${
-              vuln.patched_versions
-                ? `<br><strong>Fix:</strong> Update to ${vuln.patched_versions}`
+              vuln.fixedIn
+                ? `<br><strong>Fix:</strong> Update to ${vuln.fixedIn}`
+                : ""
+            }
+            ${
+              vuln.recommendation
+                ? `<br><strong>Recommendation:</strong> ${vuln.recommendation}`
                 : ""
             }
           </div>
