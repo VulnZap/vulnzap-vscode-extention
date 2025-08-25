@@ -25,6 +25,13 @@
 
     // Request initial data
     vscode.postMessage({ type: "requestInitialData" });
+
+    if (
+      window.VulnZapIcons &&
+      typeof window.VulnZapIcons.injectDataIcons === "function"
+    ) {
+      window.VulnZapIcons.injectDataIcons(document);
+    }
   });
 
   function initializeElements() {

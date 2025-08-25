@@ -8,7 +8,10 @@ document.addEventListener("DOMContentLoaded", function () {
     signInBtn.addEventListener("click", function () {
       // Add loading state
       signInBtn.disabled = true;
-      signInBtn.innerHTML = '<span class="button-icon">⏳</span> Signing In...';
+      signInBtn.innerHTML =
+        '<span class="button-icon">' +
+        (window.VulnZapIcons ? window.VulnZapIcons.getIcon("hourglass") : "") +
+        "</span> Signing In...";
 
       // Send message to extension
       vscode.postMessage({
@@ -18,7 +21,10 @@ document.addEventListener("DOMContentLoaded", function () {
       // Reset button after a short delay (in case login fails)
       setTimeout(() => {
         signInBtn.disabled = false;
-        signInBtn.innerHTML = '<span class="button-icon">🔑</span> Sign In';
+        signInBtn.innerHTML =
+          '<span class="button-icon">' +
+          (window.VulnZapIcons ? window.VulnZapIcons.getIcon("key") : "") +
+          "</span> Sign In";
       }, 5000);
     });
   }

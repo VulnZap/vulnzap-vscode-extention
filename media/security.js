@@ -14,6 +14,12 @@ document.addEventListener("DOMContentLoaded", function () {
   initializeEventListeners();
   showLoadingState();
   checkSidebarWidth();
+  if (
+    window.VulnZapIcons &&
+    typeof window.VulnZapIcons.injectDataIcons === "function"
+  ) {
+    window.VulnZapIcons.injectDataIcons(document);
+  }
 });
 
 // Check if sidebar is too narrow and show helpful tips
@@ -87,7 +93,11 @@ function initializeEventListeners() {
         if (scanDepsBtn.disabled) {
           scanDepsBtn.disabled = false;
           scanDepsBtn.innerHTML =
-            '<span class="icon">📦</span> Scan Dependencies';
+            '<span class="icon">' +
+            (window.VulnZapIcons
+              ? window.VulnZapIcons.getIcon("package")
+              : "") +
+            "</span> Scan Dependencies";
         }
       }, 15000); // 15 second timeout for dependency scans (they can take longer)
     });
@@ -107,7 +117,9 @@ function initializeEventListeners() {
         if (scanFileBtn.disabled) {
           scanFileBtn.disabled = false;
           scanFileBtn.innerHTML =
-            '<span class="icon">📄</span> Scan Current File';
+            '<span class="icon">' +
+            (window.VulnZapIcons ? window.VulnZapIcons.getIcon("file") : "") +
+            "</span> Scan Current File";
         }
       }, 5000); // 5 second timeout for single file scan
     });
@@ -206,11 +218,12 @@ function updateDependencyVulnerabilities() {
   if (vulnerabilities.length === 0) {
     container.innerHTML = `
       <div class="empty-state">
-        <div class="empty-state-icon">✅</div>
+        <div class="empty-state-icon"><span class="icon" data-icon="check"></span></div>
         <div class="empty-state-message">No dependency vulnerabilities found</div>
         <div class="empty-state-description">Your dependencies appear to be secure</div>
       </div>
     `;
+    if (window.VulnZapIcons) window.VulnZapIcons.injectDataIcons(container);
     return;
   }
 
@@ -267,11 +280,12 @@ function updateCodeIssues() {
   if (issues.length === 0) {
     container.innerHTML = `
       <div class="empty-state">
-        <div class="empty-state-icon">✅</div>
+        <div class="empty-state-icon"><span class="icon" data-icon="check"></span></div>
         <div class="empty-state-message">No code security issues found</div>
         <div class="empty-state-description">Your code appears to be secure</div>
       </div>
     `;
+    if (window.VulnZapIcons) window.VulnZapIcons.injectDataIcons(container);
     return;
   }
 
@@ -319,11 +333,12 @@ function updateRecentScans() {
   if (scans.length === 0) {
     container.innerHTML = `
       <div class="empty-state">
-        <div class="empty-state-icon">📋</div>
+        <div class="empty-state-icon"><span class="icon" data-icon="clipboard"></span></div>
         <div class="empty-state-message">No recent scans</div>
         <div class="empty-state-description">Run a scan to see results here</div>
       </div>
     `;
+    if (window.VulnZapIcons) window.VulnZapIcons.injectDataIcons(container);
     return;
   }
 
@@ -476,15 +491,24 @@ function hideScanningState() {
   // Only reset buttons that are actually disabled (in loading state)
   if (refreshBtn && refreshBtn.disabled) {
     refreshBtn.disabled = false;
-    refreshBtn.innerHTML = '<span class="icon">🔄</span> Refresh';
+    refreshBtn.innerHTML =
+      '<span class="icon">' +
+      (window.VulnZapIcons ? window.VulnZapIcons.getIcon("refresh") : "") +
+      "</span> Refresh";
   }
   if (scanDepsBtn && scanDepsBtn.disabled) {
     scanDepsBtn.disabled = false;
-    scanDepsBtn.innerHTML = '<span class="icon">📦</span> Scan Dependencies';
+    scanDepsBtn.innerHTML =
+      '<span class="icon">' +
+      (window.VulnZapIcons ? window.VulnZapIcons.getIcon("package") : "") +
+      "</span> Scan Dependencies";
   }
   if (scanFileBtn && scanFileBtn.disabled) {
     scanFileBtn.disabled = false;
-    scanFileBtn.innerHTML = '<span class="icon">📄</span> Scan Current File';
+    scanFileBtn.innerHTML =
+      '<span class="icon">' +
+      (window.VulnZapIcons ? window.VulnZapIcons.getIcon("file") : "") +
+      "</span> Scan Current File";
   }
 }
 

@@ -125,7 +125,9 @@ export class UsageBarWebviewProvider implements vscode.WebviewViewProvider {
       <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}';">
+        <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${
+          webview.cspSource
+        } 'unsafe-inline'; script-src 'nonce-${nonce}';">
         <link href="${styleUri}" rel="stylesheet">
         <title>VulnZap Usage</title>
       </head>
@@ -133,15 +135,15 @@ export class UsageBarWebviewProvider implements vscode.WebviewViewProvider {
         <div id="usage-container">
           <div class="usage-header">
             <div class="usage-title">
-              <span class="usage-icon">📊</span>
+              <span class="usage-icon" data-icon="stats"></span>
               <span class="title-text">Usage</span>
             </div>
             <div class="usage-actions">
               <button id="refresh-btn" class="action-btn" title="Refresh Usage Data">
-                <span class="icon">🔄</span>
+                <span class="icon" data-icon="refresh"></span>
               </button>
               <button id="details-btn" class="action-btn" title="View Details">
-                <span class="icon">📋</span>
+                <span class="icon" data-icon="clipboard"></span>
               </button>
             </div>
           </div>
@@ -151,7 +153,7 @@ export class UsageBarWebviewProvider implements vscode.WebviewViewProvider {
             <div class="usage-progress-section">
               <div class="progress-header">
                 <div class="progress-title">
-                  <span class="progress-icon">📊</span>
+                  <span class="progress-icon" data-icon="stats"></span>
                   <span class="progress-label">Line Scan Usage</span>
                   <span class="tier-badge" id="tier-badge">Free</span>
                 </div>
@@ -187,10 +189,13 @@ export class UsageBarWebviewProvider implements vscode.WebviewViewProvider {
           </div>
 
           <div class="loading-overlay" id="loading-overlay" style="display: none;">
-            <div class="loading-spinner">⟳</div>
+            <div class="loading-spinner"><span class="icon" data-icon="spinner"></span></div>
           </div>
         </div>
 
+        <script nonce="${nonce}" src="${webview.asWebviewUri(
+      vscode.Uri.joinPath(this._extensionUri, "media", "icons.js")
+    )}"></script>
         <script nonce="${nonce}" src="${scriptUri}"></script>
       </body>
       </html>`;

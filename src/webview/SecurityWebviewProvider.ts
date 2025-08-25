@@ -277,7 +277,9 @@ export class SecurityWebviewProvider implements vscode.WebviewViewProvider {
       <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}';">
+        <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${
+          webview.cspSource
+        } 'unsafe-inline'; script-src 'nonce-${nonce}';">
         <link href="${styleUri}" rel="stylesheet">
         <title>VulnZap Security Analysis</title>
       </head>
@@ -296,15 +298,15 @@ export class SecurityWebviewProvider implements vscode.WebviewViewProvider {
             </div>
             <div class="action-buttons">
               <button id="refresh-btn" class="action-btn">
-                <span class="icon">🔄</span>
+                <span class="icon" data-icon="refresh"></span>
                 Refresh
               </button>
               <button id="scan-deps-btn" class="action-btn">
-                <span class="icon">📦</span>
+                <span class="icon" data-icon="package"></span>
                 Scan Dependencies
               </button>
               <button id="scan-file-btn" class="action-btn">
-                <span class="icon">📄</span>
+                <span class="icon" data-icon="file"></span>
                 Scan Current File
               </button>
             </div>
@@ -314,7 +316,7 @@ export class SecurityWebviewProvider implements vscode.WebviewViewProvider {
             <!-- Statistics Section -->
             <div class="section" id="stats-section">
               <div class="section-header">
-                <h2>📊 Statistics</h2>
+                <h2><span class="icon" data-icon="stats"></span> Statistics</h2>
               </div>
               <div class="stats-grid">
                 <div class="stat-card">
@@ -343,7 +345,7 @@ export class SecurityWebviewProvider implements vscode.WebviewViewProvider {
             <!-- Dependency Vulnerabilities Section -->
             <div class="section" id="dependencies-section">
               <div class="section-header">
-                <h2>📦 Dependency Vulnerabilities</h2>
+                <h2><span class="icon" data-icon="package"></span> Dependency Vulnerabilities</h2>
                 <div class="section-actions">
                   <button id="fix-all-deps" class="fix-btn">Fix All</button>
                 </div>
@@ -356,7 +358,7 @@ export class SecurityWebviewProvider implements vscode.WebviewViewProvider {
             <!-- Code Issues Section -->
             <div class="section" id="issues-section">
               <div class="section-header">
-                <h2>🔍 Code Security Issues</h2>
+                <h2><span class="icon" data-icon="search"></span> Code Security Issues</h2>
                 <div class="filter-controls">
                   <select id="severity-filter">
                     <option value="all">All Severities</option>
@@ -378,7 +380,7 @@ export class SecurityWebviewProvider implements vscode.WebviewViewProvider {
             <!-- Recent Scans Section -->
             <div class="section" id="scans-section">
               <div class="section-header">
-                <h2>📋 Recent Scans</h2>
+                <h2><span class="icon" data-icon="clipboard"></span> Recent Scans</h2>
                 <button id="show-logs-btn" class="action-btn">View Logs</button>
               </div>
               <div id="scans-list" class="scans-list">
@@ -388,6 +390,9 @@ export class SecurityWebviewProvider implements vscode.WebviewViewProvider {
           </div>
         </div>
 
+        <script nonce="${nonce}" src="${webview.asWebviewUri(
+      vscode.Uri.joinPath(this._extensionUri, "media", "icons.js")
+    )}"></script>
         <script nonce="${nonce}" src="${scriptUri}"></script>
       </body>
       </html>`;

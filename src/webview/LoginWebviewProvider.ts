@@ -65,7 +65,9 @@ export class LoginWebviewProvider implements vscode.WebviewViewProvider {
       <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}';">
+        <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${
+          webview.cspSource
+        } 'unsafe-inline'; script-src 'nonce-${nonce}';">
         <link href="${styleUri}" rel="stylesheet">
         <title>VulnZap Login</title>
       </head>
@@ -87,7 +89,7 @@ export class LoginWebviewProvider implements vscode.WebviewViewProvider {
 
           <div class="login-form">
             <button id="signin-btn" class="signin-button">
-              <span class="button-icon">🔑</span>
+              <span class="button-icon" data-icon="key"></span>
               Sign In
             </button>
           </div>
@@ -98,7 +100,9 @@ export class LoginWebviewProvider implements vscode.WebviewViewProvider {
             <p>Need an account? <a href="#" id="create-account">Create one at vulnzap.com</a></p>
           </div>
         </div>
-
+        <script nonce="${nonce}" src="${webview.asWebviewUri(
+      vscode.Uri.joinPath(this._extensionUri, "media", "icons.js")
+    )}"></script>
         <script nonce="${nonce}" src="${scriptUri}"></script>
       </body>
       </html>`;
