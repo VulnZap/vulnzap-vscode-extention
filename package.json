@@ -2,7 +2,7 @@
   "name": "vulnzap",
   "displayName": "VulnZap",
   "description": "AI-powered security analysis for JavaScript, TypeScript, React (JSX/TSX), Python, and Java code. Detects vulnerabilities like XSS, SQL injection, and weak cryptography with high accuracy.",
-  "version": "0.2.1",
+  "version": "0.2.7",
   "publisher": "vulnzap",
   "icon": "icon.png",
   "repository": {
@@ -418,7 +418,6 @@
     "@babel/parser": "^7.27.7",
     "@babel/traverse": "^7.27.7",
     "@babel/types": "^7.27.7",
-    "@supabase/supabase-js": "^2.55.0",
     "axios": "^1.6.0",
     "typescript": "^4.9.5"
   },
