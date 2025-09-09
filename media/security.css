@@ -47,7 +47,9 @@ body {
 
 .action-buttons {
   display: flex;
+  flex-direction: row;
   gap: 8px;
+  transition: flex-direction 0.3s ease;
 }
 
 .action-btn {
@@ -61,7 +63,8 @@ body {
   display: flex;
   align-items: center;
   gap: 6px;
-  transition: background-color 0.2s ease;
+  transition: all 0.2s ease;
+  white-space: nowrap;
 }
 
 .action-btn:hover {
@@ -378,6 +381,8 @@ body {
 }
 
 /* Responsive Design - Better handling for narrow sidebars */
+
+/* Very narrow screens - full column layout */
 @media (max-width: 400px) {
   #security-container {
     padding: 12px 18px 12px 12px; /* Maintain right padding even on narrow screens */
@@ -387,7 +392,7 @@ body {
   .header {
     flex-direction: column;
     align-items: flex-start;
-    gap: 8px;
+    gap: 12px;
   }
 
   .logo-section h1 {
@@ -396,15 +401,16 @@ body {
 
   .action-buttons {
     width: 100%;
-    flex-wrap: wrap;
-    gap: 4px;
+    flex-direction: column; /* Stack buttons vertically */
+    gap: 8px;
   }
 
   .action-btn {
-    flex: 1;
-    min-width: 80px;
-    padding: 4px 8px;
-    font-size: 11px;
+    width: 100%;
+    justify-content: center;
+    padding: 8px 12px;
+    font-size: 12px;
+    min-height: 32px;
   }
 
   .stats-grid {
@@ -446,7 +452,8 @@ body {
   }
 }
 
-@media (max-width: 600px) and (min-width: 401px) {
+/* Medium narrow screens - column layout for action buttons */
+@media (max-width: 550px) and (min-width: 401px) {
   .header {
     flex-direction: column;
     align-items: flex-start;
@@ -455,9 +462,40 @@ body {
 
   .action-buttons {
     width: 100%;
-    justify-content: space-between;
+    flex-direction: column; /* Stack buttons vertically */
+    gap: 6px;
   }
 
+  .action-btn {
+    width: 100%;
+    justify-content: center;
+    padding: 6px 12px;
+    font-size: 12px;
+  }
+
+  .stats-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .section-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  .filter-controls {
+    width: 100%;
+    gap: 4px;
+  }
+
+  .filter-controls select {
+    flex: 1;
+    font-size: 11px;
+  }
+}
+
+/* Larger screens that still need some responsive adjustments */
+@media (max-width: 700px) and (min-width: 551px) {
   .stats-grid {
     grid-template-columns: repeat(2, 1fr);
   }

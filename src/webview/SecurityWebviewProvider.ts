@@ -81,6 +81,23 @@ export class SecurityWebviewProvider implements vscode.WebviewViewProvider {
           case "fixAllDependencies":
             vscode.commands.executeCommand("vulnzap.fixAllDependencies");
             break;
+          case "requestData":
+            // Handle explicit data requests from webview
+            this.updateWebviewData();
+            break;
+        }
+      },
+      undefined,
+      this.context.subscriptions
+    );
+
+    // Handle webview visibility changes - refresh data when tab becomes visible
+    webviewView.onDidChangeVisibility(
+      () => {
+        if (webviewView.visible) {
+          // Webview became visible (user switched back to this tab)
+          // Refresh data to ensure it's up to date
+          this.updateWebviewData();
         }
       },
       undefined,

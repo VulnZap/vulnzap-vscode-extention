@@ -44,11 +44,22 @@ export class UsageBarWebviewProvider implements vscode.WebviewViewProvider {
           case "refresh":
             this.refreshUsage();
             break;
-          case "viewDetails":
-            vscode.commands.executeCommand(
-              "workbench.view.extension.vulnzap-security"
-            );
+          case "logout":
+            vscode.commands.executeCommand("vulnzap.logout");
             break;
+        }
+      },
+      undefined,
+      this._context.subscriptions
+    );
+
+    // Handle webview visibility changes - refresh data when tab becomes visible
+    webviewView.onDidChangeVisibility(
+      () => {
+        if (webviewView.visible) {
+          // Webview became visible (user switched back to this tab)
+          // Refresh usage data to ensure it's up to date
+          this.loadInitialUsage();
         }
       },
       undefined,
@@ -142,8 +153,8 @@ export class UsageBarWebviewProvider implements vscode.WebviewViewProvider {
               <button id="refresh-btn" class="action-btn" title="Refresh Usage Data">
                 <span class="icon" data-icon="refresh"></span>
               </button>
-              <button id="details-btn" class="action-btn" title="View Details">
-                <span class="icon" data-icon="clipboard"></span>
+              <button id="logout-btn" class="action-btn" title="Logout">
+                <span class="icon" data-icon="sign-out"></span>
               </button>
             </div>
           </div>

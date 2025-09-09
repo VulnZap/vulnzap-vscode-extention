@@ -5,7 +5,7 @@
 
   // DOM elements
   let refreshBtn;
-  let detailsBtn;
+  let logoutBtn;
   let totalScansStat;
   let vulnerabilitiesStat;
   let loadingOverlay;
@@ -36,7 +36,7 @@
 
   function initializeElements() {
     refreshBtn = document.getElementById("refresh-btn");
-    detailsBtn = document.getElementById("details-btn");
+    logoutBtn = document.getElementById("logout-btn");
     totalScansStat = document.getElementById("total-scans");
     vulnerabilitiesStat = document.getElementById("vulnerabilities");
     loadingOverlay = document.getElementById("loading-overlay");
@@ -62,9 +62,9 @@
       });
     }
 
-    if (detailsBtn) {
-      detailsBtn.addEventListener("click", function () {
-        vscode.postMessage({ type: "viewDetails" });
+    if (logoutBtn) {
+      logoutBtn.addEventListener("click", function () {
+        vscode.postMessage({ type: "logout" });
       });
     }
   }

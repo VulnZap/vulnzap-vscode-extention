@@ -40,6 +40,19 @@ export class LoginWebviewProvider implements vscode.WebviewViewProvider {
       undefined,
       this._context.subscriptions
     );
+
+    // Handle webview visibility changes - refresh view when tab becomes visible
+    webviewView.onDidChangeVisibility(
+      () => {
+        if (webviewView.visible) {
+          // Webview became visible (user switched back to this tab)
+          // Refresh the view to ensure it reflects current login state
+          this.refresh();
+        }
+      },
+      undefined,
+      this._context.subscriptions
+    );
   }
 
   public refresh() {
