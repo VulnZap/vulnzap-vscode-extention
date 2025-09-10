@@ -2,3 +2,4 @@
 export { Logger } from "./logger";
 export { FileExclusionManager } from "./fileExclusions";
 export { UsageService } from "./usageService";
+export { VulnZapConfig, getApiUrl, getJobApiUrl } from "./config";

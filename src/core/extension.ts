@@ -3,6 +3,7 @@ import * as vscode from "vscode";
 import { DiagnosticProvider } from "../providers/diagnosticProvider";
 import { DependencyDiagnosticProvider } from "../providers/dependencyDiagnosticProvider";
 import { APIProviderManager } from "../providers/apiProviders";
+import { VulnZapCodeActionProvider } from "../providers/codeActionProvider";
 import { SecurityWebviewProvider } from "../webview/SecurityWebviewProvider";
 import { LoginWebviewProvider } from "../webview/LoginWebviewProvider";
 import { UsageBarWebviewProvider } from "../webview/UsageBarWebviewProvider";
@@ -17,6 +18,9 @@ import { UsageService } from "../utils/usageService";
  * Main extension activation function
  * Initializes all components and registers commands, listeners, and providers
  */
+// Track ongoing scans to prevent duplicate progress notifications
+const ongoingScans = new Map<string, Promise<any>>();
+
 export async function activate(context: vscode.ExtensionContext) {
   try {
     // Initialize logger first for proper output channel logging
@@ -43,6 +47,7 @@ export async function activate(context: vscode.ExtensionContext) {
       context
     );
     const dependencyScanner = new DependencyScanner(context);
+    const codeActionProvider = new VulnZapCodeActionProvider();
 
     // Register the security webview in the sidebar
     vscode.window.registerWebviewViewProvider(
@@ -60,6 +65,35 @@ export async function activate(context: vscode.ExtensionContext) {
     vscode.window.registerWebviewViewProvider(
       UsageBarWebviewProvider.viewType,
       usageBarWebviewProvider
+    );
+
+    // Register the code action provider for auto-fixes
+    const codeActionProviderDisposable = vscode.languages.registerCodeActionsProvider(
+      [
+        { language: 'javascript' },
+        { language: 'typescript' },
+        { language: 'python' },
+        { language: 'java' },
+        { language: 'csharp' },
+        { language: 'cpp' },
+        { language: 'c' },
+        { language: 'php' },
+        { language: 'ruby' },
+        { language: 'go' },
+        { language: 'rust' },
+        { language: 'kotlin' },
+        { language: 'swift' },
+        { language: 'scala' },
+        { language: 'html' },
+        { language: 'css' },
+        { language: 'json' },
+        { language: 'yaml' },
+        { language: 'xml' }
+      ],
+      codeActionProvider,
+      {
+        providedCodeActionKinds: VulnZapCodeActionProvider.providedCodeActionKinds
+      }
     );
 
     // Initialize usage service
@@ -268,7 +302,7 @@ export async function activate(context: vscode.ExtensionContext) {
           const config = vscode.workspace.getConfiguration("vulnzap");
           await configureVulnZap(config);
           vscode.window.showInformationMessage(
-            "✅ VulnZap API configured successfully!"
+"VulnZap API configured successfully!"
           );
         } catch (error) {
           console.error("VulnZap: Error in configureApiKeys:", error);
@@ -522,11 +556,11 @@ export async function activate(context: vscode.ExtensionContext) {
 
                 if (totalVulns === 0) {
                   vscode.window.showInformationMessage(
-                    `✅ No vulnerabilities found in ${totalPackages} dependencies across ${results.length} project(s).`
+`No vulnerabilities found in ${totalPackages} dependencies across ${results.length} project(s).`
                   );
                 } else {
                   vscode.window.showWarningMessage(
-                    `🔍 Found ${totalVulns} vulnerabilities in ${totalPackages} dependencies. Check notifications for details.`
+`Found ${totalVulns} vulnerabilities in ${totalPackages} dependencies. Check notifications for details.`
                   );
                 }
               }
@@ -589,11 +623,11 @@ export async function activate(context: vscode.ExtensionContext) {
 
                 if (totalVulns === 0) {
                   vscode.window.showInformationMessage(
-                    `✅ Fresh scan complete: No vulnerabilities found in ${totalPackages} dependencies.`
+`Fresh scan complete: No vulnerabilities found in ${totalPackages} dependencies.`
                   );
                 } else {
                   vscode.window.showWarningMessage(
-                    `🔍 Fresh scan complete: Found ${totalVulns} vulnerabilities in ${totalPackages} dependencies.`
+`Fresh scan complete: Found ${totalVulns} vulnerabilities in ${totalPackages} dependencies.`
                   );
                 }
               }
@@ -673,7 +707,7 @@ export async function activate(context: vscode.ExtensionContext) {
             if (success) {
               await document.save();
               vscode.window.showInformationMessage(
-                `✅ Updated ${targetPackageName} to version ${targetVersion}`
+`Updated ${targetPackageName} to version ${targetVersion}`
               );
             } else {
               vscode.window.showErrorMessage(
@@ -780,21 +814,21 @@ export async function activate(context: vscode.ExtensionContext) {
           const patterns = FileExclusionManager.getExcludedPatterns();
 
           const message =
-            `📊 VulnZap File Exclusion Statistics\n\n` +
+`VulnZap File Exclusion Statistics\n\n` +
             `Total files in workspace: ${stats.totalFiles}\n` +
             `Excluded from scanning: ${stats.excludedFiles}\n` +
             `Supported for scanning: ${stats.supportedFiles}\n\n` +
-            `🚫 Excluded Extensions (${
+`Excluded Extensions (${
               patterns.extensions.length
             }): ${patterns.extensions.slice(0, 10).join(", ")}${
               patterns.extensions.length > 10 ? "..." : ""
             }\n\n` +
-            `📁 Excluded Directories (${
+`Excluded Directories (${
               patterns.directories.length
             }): ${patterns.directories.slice(0, 8).join(", ")}${
               patterns.directories.length > 8 ? "..." : ""
             }\n\n` +
-            `📄 Common Excluded Files: package.json, tsconfig.json, webpack.config.js, .gitignore, README.md, etc.\n\n` +
+`Common Excluded Files: package.json, tsconfig.json, webpack.config.js, .gitignore, README.md, etc.\n\n` +
             `View full list in VS Code settings: vulnzap.excludeFilePatterns`;
 
           await vscode.window
@@ -867,6 +901,16 @@ export async function activate(context: vscode.ExtensionContext) {
       forceShow: boolean = false
     ) {
       try {
+        const filePath = document.uri.fsPath;
+        
+        // Check if there's already a scan running for this file
+        const existingScan = ongoingScans.get(filePath);
+        if (existingScan) {
+          Logger.info(`🔄 Scan already in progress for ${filePath}, skipping duplicate notification`);
+          // Return the existing scan promise to avoid showing duplicate progress
+          return existingScan;
+        }
+
         // Check if user is logged in before proceeding with scan
         const session = context.globalState.get("vulnzapSession");
         if (!session) {
@@ -874,15 +918,17 @@ export async function activate(context: vscode.ExtensionContext) {
           return;
         }
 
-        // Always notify webview that scan is starting (regardless of trigger source)
-        securityWebviewProvider.startScanLoading(document);
-        const config = vscode.workspace.getConfiguration("vulnzap");
-        const maxFileSize = config.get<number>("maxFileSizeBytes", 1000000);
-        const maxFileLines = config.get<number>("maxFileLines", 2000);
-        const maxIssues = config.get<number>("maxIssuesPerFile", 100);
-        const showScanNotification = true; // Always show scan notifications (hardcoded)
-        const fileSize = Buffer.byteLength(document.getText(), "utf8");
-        const lineCount = document.lineCount;
+        // Create a scan promise and store it to prevent duplicates
+        const scanPromise = (async () => {
+          // Always notify webview that scan is starting (regardless of trigger source)
+          securityWebviewProvider.startScanLoading(document);
+          const config = vscode.workspace.getConfiguration("vulnzap");
+          const maxFileSize = config.get<number>("maxFileSizeBytes", 1000000);
+          const maxFileLines = config.get<number>("maxFileLines", 2000);
+          const maxIssues = config.get<number>("maxIssuesPerFile", 100);
+          const showScanNotification = true; // Always show scan notifications (hardcoded)
+          const fileSize = Buffer.byteLength(document.getText(), "utf8");
+          const lineCount = document.lineCount;
 
         if (fileSize > maxFileSize || lineCount > maxFileLines) {
           vscode.window.showWarningMessage(
@@ -911,7 +957,7 @@ export async function activate(context: vscode.ExtensionContext) {
           await vscode.window.withProgress(
             {
               location: vscode.ProgressLocation.Notification,
-              title: `🔍 VulnZap: Scanning ${fileName} for security issues...`,
+title: `VulnZap: Scanning ${fileName} for security issues...`,
               cancellable: true,
             },
             async (progress, token) => {
@@ -1028,22 +1074,36 @@ export async function activate(context: vscode.ExtensionContext) {
             .join("; ");
         } else {
           vscode.window.showInformationMessage(
-            "✅ VulnZap: No security issues found"
+"VulnZap: No security issues found"
           );
         }
 
-        if (forceShow && issues.length > 0) {
-          vscode.window.showInformationMessage(
-            `Found ${issues.length} security issue${
-              issues.length === 1 ? "" : "s"
-            }`
-          );
+          if (forceShow && issues.length > 0) {
+            vscode.window.showInformationMessage(
+              `Found ${issues.length} security issue${
+                issues.length === 1 ? "" : "s"
+              }`
+            );
+          }
+        })();
+
+        // Store the scan promise to prevent duplicates
+        ongoingScans.set(filePath, scanPromise);
+
+        try {
+          // Wait for the scan to complete
+          await scanPromise;
+        } finally {
+          // Always clean up the scan tracking
+          ongoingScans.delete(filePath);
         }
       } catch (error) {
         Logger.error("=== SCAN ERROR ===", error as Error);
         // Stop loading indicator on error
         securityWebviewProvider.stopScanLoading(document);
         updateStatusBar(); // Reset to normal status
+        // Clean up scan tracking on error
+        ongoingScans.delete(document.uri.fsPath);
         if (forceShow) {
           vscode.window.showErrorMessage("Error during security scan");
         }
@@ -1146,7 +1206,8 @@ export async function activate(context: vscode.ExtensionContext) {
       optimizeLayoutCommand,
       configChangeListener,
       diagnosticProvider,
-      usageBarWebviewProvider
+      usageBarWebviewProvider,
+      codeActionProviderDisposable
     );
 
     // Initial scan if there's an active editor
@@ -1213,7 +1274,7 @@ function suggestOptimalLayout() {
     // Show layout optimization tip once
     vscode.window
       .showInformationMessage(
-        "🛡️ VulnZap works best with a wider sidebar. Would you like to optimize your layout?",
+"VulnZap works best with a wider sidebar. Would you like to optimize your layout?",
         "Optimize Layout",
         "Not Now",
         "Don't Show Again"
@@ -1258,12 +1319,12 @@ async function optimizeLayoutForVulnZap() {
       .update("hasSeenLayoutTip", true, vscode.ConfigurationTarget.Global);
 
     vscode.window.showInformationMessage(
-      "✅ Layout optimized! You can manually drag the sidebar edge to adjust width further."
+"Layout optimized! You can manually drag the sidebar edge to adjust width further."
     );
   } catch (error) {
     Logger.error("Error optimizing layout:", error as Error);
     vscode.window.showInformationMessage(
-      "💡 Tip: Drag the sidebar edge to make VulnZap wider for better viewing."
+"Tip: Drag the sidebar edge to make VulnZap wider for better viewing."
     );
   }
 }
@@ -1289,19 +1350,7 @@ async function configureVulnZap(config: vscode.WorkspaceConfiguration) {
     );
   }
 
-  const apiUrl = await vscode.window.showInputBox({
-    prompt: "Enter VulnZap API URL",
-    value: config.get("vulnzapApiUrl", "https://api.vulnzap.com"),
-    placeHolder: "https://api.vulnzap.com",
-  });
-
-  if (apiUrl !== undefined) {
-    await config.update(
-      "vulnzapApiUrl",
-      apiUrl,
-      vscode.ConfigurationTarget.Global
-    );
-  }
+  // API URL is now hardcoded to engine.vulnzap.com - no user configuration needed
 }
 
 // async function configureGoogleSearch(config: vscode.WorkspaceConfiguration) {

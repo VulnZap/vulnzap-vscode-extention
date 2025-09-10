@@ -5,6 +5,7 @@ import * as path from "path";
 import * as os from "os";
 // AST analysis removed - using text-based approach now
 import { Logger } from "../utils/logger";
+import { VulnZapConfig, getApiUrl, getJobApiUrl } from "../utils/config";
 
 /**
  * Standard response format for AI security analysis results
@@ -24,21 +25,20 @@ export interface AISecurityResponse {
     searchQuery?: string;
     // New fields for enhanced vulnerability analysis
     taintFlowPath?: Array<{
-      nodeId: string;
-      filePath: string;
-      flowType: string;
-      operation: string;
       lineNumber: number;
       stepNumber: number;
       codeSnippet: string;
       description: string;
-      columnNumber: number;
-      contextLines: {
-        after: string[];
-        before: string[];
-        current: string;
-      };
+      originalFilePath: string;
     }>;
+    patchedCode?: Array<{
+      lineNumber: number;
+      stepNumber: number;
+      codeSnippet: string;
+      description: string;
+      originalFilePath: string;
+    }>;
+    keywords?: string[];
     owasp?: string;
     framework?: string;
     metadata?: any;
@@ -109,124 +109,93 @@ export interface ScanResult {
   };
 }
 
-export interface TaintVulnerability {
-  id: string;
-  cwe: string;
-  name: string;
-  sink: {
-    type: string;
-    nodeId: string;
-    category: string;
-    filePath: string;
-    lineNumber: number;
-    codeSnippet: string;
-    columnNumber: number;
-  };
-  type: string;
-  owasp: string;
-  title: string;
-  source: {
-    type: string;
-    nodeId: string;
-    category: string;
-    filePath: string;
-    lineNumber: number;
-    codeSnippet: string;
-    columnNumber: number;
-  };
-  category: string;
-  language: string;
-  metadata: {
-    requestId: string;
-    pathLength: number;
-    isInterFile: boolean;
-    analysisType: string;
-    sinkCategory: string;
-    sourceCategory: string;
-  };
-  severity: string;
-  framework: string;
-  confidence: number;
-  sanitizers: any[];
-  description: string;
-  taintFlowPath: Array<{
-    nodeId: string;
-    filePath: string;
-    flowType: string;
-    operation: string;
-    lineNumber: number;
-    stepNumber: number;
-    codeSnippet: string;
-    description: string;
-    columnNumber: number;
-    contextLines: {
-      after: string[];
-      before: string[];
-      current: string;
-    };
-  }>;
-  vulnerabilityId: string;
-}
 
 export interface StandaloneVulnerability {
   id: string;
-  cwe: string;
-  name: string;
+  description: string;
   type: string;
-  owasp: string;
-  nodeId: string;
-  category: string;
-  filePath: string;
-  location: {
-    end: {
-      row: number;
-      column: number;
-    };
-    start: {
-      row: number;
-      column: number;
-    };
-    snippet: string;
-  };
-  metadata: {
-    standalone: boolean;
-    credentialType: string;
-    detectionMethod: string;
-  };
-  severity: string;
+  keywords: string[];
   confidence: number;
+  originalFilePath: string;
+  codeSnippet: string;
+  patchedCode: string;
+  lineNumber: number;
+}
+
+export interface SimplifiedTaintFlowStep {
+  stepNumber: number;
+  filePath: string;
+  originalFilePath: string;
+  lineNumber: number;
   codeSnippet: string;
   description: string;
-  vulnerabilityId: string;
+}
+
+export interface TaintVulnerability {
+  id: string;
+  description: string;
+  type: string;
+  keywords: string[];
+  confidence: number;
+  source: {
+    originalFilePath: string;
+    filePath: string;
+    lineNumber: number;
+    codeSnippet: string;
+    description: string;
+  }
+  sink: {
+    originalFilePath: string;
+    filePath: string;
+    lineNumber: number;
+    codeSnippet: string;
+    description: string;
+  }
+  taintFlowPath: Array<SimplifiedTaintFlowStep>;
+  patchedCode: Array<{
+    stepNumber: number;
+    description: string;
+    originalFilePath: string;
+    lineNumber: number;
+    codeSnippet: string;
+  }>;
 }
 
 export interface VulnZapResponse {
   success: boolean;
-  data:
-    | ScanResult
-    | {
-        results: {
-          vulnerabilities: Array<{
-            file: string;
-            language: string;
-            metadata: {
-              performance: {
-                totalTime: number;
-                cfgBuildTime: number;
-                cpgBuildTime: number;
-                dfgBuildTime: number;
-                taintAnalysisTime: number;
-                contextResolveTime: number;
-              };
-            };
-            scanTime: number;
-            linesOfCode: number;
-            taintVulnerabilities: TaintVulnerability[];
-            standaloneVulnerabilities: StandaloneVulnerability[];
-          }>;
+  data: {
+    jobId: string;
+    status: string;
+    progress: number;
+    metadata: {
+      fileCount: number;
+      languages: string[];
+    };
+    startedAt: string;
+    completedAt: string;
+    error: string | null;
+    results: {
+      vulnerabilities: Array<{
+        file: string;
+        language: string;
+        metadata: {
+          performance: {
+            totalTime: number;
+            cfgBuildTime: number;
+            cpgBuildTime: number;
+            dfgBuildTime: number;
+            taintAnalysisTime: number;
+            contextResolveTime: number;
+          };
         };
-        createdAt: string;
-      };
+        scanTime: number;
+        linesOfCode: number;
+        taintVulnerabilities: TaintVulnerability[];
+        standaloneVulnerabilities: StandaloneVulnerability[];
+      }>;
+    };
+    createdAt: string;
+  };
   error?: string;
 }
 
@@ -280,65 +249,6 @@ export interface APIProvider {
 }
 
 /**
- * Utility class for logging LLM interactions for debugging and analysis
- */
-class LLMLogger {
-  private static logDir: string = path.join(os.homedir(), ".vulnzap");
-
-  /**
-   * Creates the log directory if it doesn't exist
-   */
-  static async ensureLogDirectory(): Promise<void> {
-    try {
-      if (!fs.existsSync(this.logDir)) {
-        fs.mkdirSync(this.logDir, { recursive: true });
-      }
-    } catch (error) {
-      Logger.error("Failed to create log directory:", error as Error);
-    }
-  }
-
-  /**
-   * Logs an LLM interaction with input, output, and metadata
-   */
-  static async logLLMInteraction(
-    provider: string,
-    input: string,
-    output: string,
-    metadata: any = {}
-  ): Promise<void> {
-    try {
-      await this.ensureLogDirectory();
-
-      const timestamp = new Date().toISOString();
-      const logEntry = {
-        timestamp,
-        provider,
-        metadata,
-        input: {
-          content: input,
-          length: input.length,
-        },
-        output: {
-          content: output,
-          length: output.length,
-        },
-      };
-
-      const logFileName = `llm-${provider}-${
-        new Date().toISOString().split("T")[0]
-      }.log`;
-      const logFilePath = path.join(this.logDir, logFileName);
-
-      const logLine = JSON.stringify(logEntry) + "\n";
-      fs.appendFileSync(logFilePath, logLine);
-    } catch (error) {
-      Logger.error("Failed to log LLM interaction:", error as Error);
-    }
-  }
-}
-
-/**
  * VulnZap API provider implementation for specialized security analysis
  * Connects to the VulnZap backend service for enhanced vulnerability detection
  */
@@ -347,6 +257,8 @@ export class VulnZapProvider implements APIProvider {
   displayName = "VulnZap API";
   private context: vscode.ExtensionContext | undefined;
   private requestQueue: Promise<any> = Promise.resolve();
+  private runningJobs: Map<string, string> = new Map(); // filePath -> jobId
+  private scanLocks: Map<string, Promise<any>> = new Map(); // filePath -> ongoing scan promise
 
   constructor(context?: vscode.ExtensionContext) {
     this.context = context;
@@ -360,14 +272,13 @@ export class VulnZapProvider implements APIProvider {
   }
 
   /**
-   * Checks if the provider has all required configuration (API key and URL)
+   * Checks if the provider has all required configuration (API key only)
    */
   isConfigured(): boolean {
     const config = vscode.workspace.getConfiguration("vulnzap");
     const apiKey = config.get("vulnzapApiKey", "").trim();
-    const apiUrl = config.get("vulnzapApiUrl", "").trim();
 
-    return apiKey.length > 0 && apiUrl.length > 0;
+    return apiKey.length > 0;
   }
 
   /**
@@ -378,20 +289,9 @@ export class VulnZapProvider implements APIProvider {
     const config = vscode.workspace.getConfiguration("vulnzap");
 
     const apiKey = config.get("vulnzapApiKey", "").trim();
-    const apiUrl = config.get("vulnzapApiUrl", "").trim();
 
     if (!apiKey) {
       errors.push("VulnZap API key is required");
-    }
-
-    if (!apiUrl) {
-      errors.push("VulnZap API URL is required");
-    } else {
-      try {
-        new URL(apiUrl);
-      } catch {
-        errors.push("VulnZap API URL must be a valid URL");
-      }
     }
 
     return errors;
@@ -405,18 +305,45 @@ export class VulnZapProvider implements APIProvider {
     filePath: string,
     language: string
   ): Promise<AISecurityResponse> {
+    // Check if there's already a scan running for this file
+    const existingScan = this.scanLocks.get(filePath);
+    if (existingScan) {
+      Logger.info(`Cancelling existing scan for ${filePath} and starting new one`);
+      // Cancel the existing scan by not awaiting it and letting it be garbage collected
+      // The actual job cancellation will happen in performTextBasedAnalysis
+    }
+
+    // Create a new scan promise and store it
+    const scanPromise = this.performScan(code, filePath, language);
+    this.scanLocks.set(filePath, scanPromise);
+
+    try {
+      const result = await scanPromise;
+      return result;
+    } finally {
+      // Clean up the scan lock
+      this.scanLocks.delete(filePath);
+    }
+  }
+
+  /**
+   * Performs the actual scan with proper error handling
+   */
+  private async performScan(
+    code: string,
+    filePath: string,
+    language: string
+  ): Promise<AISecurityResponse> {
     // Queue requests to prevent overwhelming the API
     return this.queueRequest(async () => {
       const config = vscode.workspace.getConfiguration("vulnzap");
       const apiKey = config.get("vulnzapApiKey", "").trim();
-      const apiUrl = config.get("vulnzapApiUrl", "").trim();
 
-      if (!apiKey || !apiUrl) {
-        throw new Error("VulnZap API key and URL are required");
+      if (!apiKey) {
+        throw new Error("VulnZap API key is required");
       }
 
       const startTime = Date.now();
-      const fastScan = true; // Hardcoded: always enable fast scan
 
       try {
         // Use text-based analysis (AST removed for simplicity and speed)
@@ -425,9 +352,7 @@ export class VulnZapProvider implements APIProvider {
           filePath,
           code,
           language,
-          apiKey,
-          apiUrl,
-          fastScan
+          apiKey
         );
 
         const analysisTime = Date.now() - startTime;
@@ -474,8 +399,7 @@ export class VulnZapProvider implements APIProvider {
    * Queues API requests to prevent overwhelming the server
    */
   private async queueRequest<T>(request: () => Promise<T>): Promise<T> {
-    const config = vscode.workspace.getConfiguration("vulnzap");
-    const queueDelay = config.get("requestQueueDelay", 500);
+    const queueDelay = VulnZapConfig.api.retry.queueDelay;
 
     const currentRequest = this.requestQueue.then(async () => {
       // Add a configurable delay between requests to be respectful to the API
@@ -499,14 +423,18 @@ export class VulnZapProvider implements APIProvider {
     filePath: string,
     code: string,
     language: string,
-    apiKey: string,
-    apiUrl: string,
-    fastScan: boolean
+    apiKey: string
   ): Promise<AISecurityResponse> {
-    // Step 1: Start the scan job with retry logic
-    const scanResponse = await this.makeApiCallWithRetry(async () => {
-      return axios.post(
-        `${apiUrl}/api/scan/content`,
+    let jobId: string | undefined;
+    
+    try {
+      // Step 0: Cancel any existing job for this file path
+      await this.cancelPreviousJobForFile(filePath, apiKey);
+
+      // Step 1: Start the scan job with retry logic
+      const scanResponse = await this.makeApiCallWithRetry(async () => {
+        return axios.post(
+          getApiUrl("scanContent"),
         {
           files: [
             {
@@ -516,161 +444,162 @@ export class VulnZapProvider implements APIProvider {
             },
           ],
         },
-        {
-          headers: {
-            "x-api-key": `${apiKey}`,
-            "Content-Type": "application/json",
-            "User-Agent": "VulnZap-VSCode-Extension",
-          },
-        }
+          {
+            headers: {
+              "x-api-key": `${apiKey}`,
+              "Content-Type": "application/json",
+              "User-Agent": VulnZapConfig.userAgent,
+            },
+          }
       );
     });
 
     Logger.debug("Scan response:", JSON.stringify(scanResponse.data, null, 2));
 
-    // Extract job ID from the scan response
-    const jobId = scanResponse.data?.data?.jobId;
-    if (!jobId) {
-      throw new Error("No job ID returned from scan request");
-    }
+      // Extract job ID from the scan response
+      jobId = scanResponse.data?.data?.jobId;
+      if (!jobId) {
+        throw new Error("No job ID returned from scan request");
+      }
 
-    // Step 2: Poll for results with exponential backoff (no timeout)
-    const config = vscode.workspace.getConfiguration("vulnzap");
-    const initialPollingInterval = 15000; // Hardcoded: 15 seconds
-    const maxPollingInterval = 60000; // Hardcoded: 60 seconds
+      // Step 1.5: Register the new job for this file path
+      this.runningJobs.set(filePath, jobId);
+Logger.info(`Started new scan job ${jobId} for file ${filePath}`);
 
-    // Get file info for logging
-    const fileSizeKB = Buffer.byteLength(code, "utf8") / 1024;
-    const lineCount = code.split("\n").length;
+      // Step 2: Poll for results with exponential backoff (no timeout)
+      const initialPollingInterval = VulnZapConfig.api.timeouts.scanPolling.initial;
+      const maxPollingInterval = VulnZapConfig.api.timeouts.scanPolling.maximum;
 
-    Logger.info(
-      `Starting scan polling for ${filePath} (${fileSizeKB.toFixed(
-        1
-      )}KB, ${lineCount} lines). No timeout - will poll until completion.`
-    );
+      // Get file info for logging
+      const fileSizeKB = Buffer.byteLength(code, "utf8") / 1024;
+      const lineCount = code.split("\n").length;
 
-    // Inform user about potentially long scans for large files
-    if (fileSizeKB > 500 || lineCount > 5000) {
-      vscode.window.showInformationMessage(
-        `VulnZap: Large file detected (${fileSizeKB.toFixed(
+      Logger.info(
+        `Starting scan polling for ${filePath} (${fileSizeKB.toFixed(
           1
-        )}KB, ${lineCount} lines). This scan may take several minutes to complete.`,
-        { modal: false }
+        )}KB, ${lineCount} lines). No timeout - will poll until completion.`
       );
-    }
 
-    const startTime = Date.now();
-    let pollingInterval = initialPollingInterval;
-    let attempt = 0;
-    const maxPollingAttempts = 1000; // Hardcoded: max 1000 attempts
-
-    // Poll until job completes, fails, or we hit the failsafe limit
-    while (attempt < maxPollingAttempts) {
-      try {
-        const jobResponse = await this.makeApiCallWithRetry(async () => {
-          return axios.get(`${apiUrl}/api/scan/jobs/${jobId}`, {
-            headers: {
-              "x-api-key": `${apiKey}`,
-              "Content-Type": "application/json",
-              "User-Agent": "VulnZap-VSCode-Extension",
-            },
-          });
-        });
-
-        const jobData = jobResponse.data?.data;
-        Logger.debug(
-          `Job polling response (attempt ${attempt + 1}):`,
-          JSON.stringify(jobResponse.data, null, 2)
+      // Inform user about potentially long scans for large files
+      if (fileSizeKB > 500 || lineCount > 5000) {
+        vscode.window.showInformationMessage(
+          `VulnZap: Large file detected (${fileSizeKB.toFixed(
+            1
+          )}KB, ${lineCount} lines). This scan may take several minutes to complete.`,
+          { modal: false }
         );
+      }
 
-        if (!jobData) {
-          Logger.warn("No job data received from API response");
-          await this.sleep(pollingInterval);
-          continue;
-        }
+      const startTime = Date.now();
+      let pollingInterval = initialPollingInterval;
+      let attempt = 0;
+      const maxPollingAttempts = VulnZapConfig.api.timeouts.scanPolling.maxAttempts;
 
-        Logger.debug(`Job status: ${jobData.status}`);
+      // Poll until job completes, fails, or we hit the failsafe limit
+      while (attempt < maxPollingAttempts) {
+        try {
+          const jobResponse = await this.makeApiCallWithRetry(async () => {
+            return axios.get(getJobApiUrl(jobId!), {
+              headers: {
+                "x-api-key": `${apiKey}`,
+                "Content-Type": "application/json",
+                "User-Agent": VulnZapConfig.userAgent,
+              },
+            });
+          });
 
-        // Provide progress feedback for long-running scans
-        const elapsedTime = Date.now() - startTime;
-        if (elapsedTime > 60000 && attempt % 3 === 0) {
-          // Every 3rd attempt after 1 minute
-          const elapsedMinutes = Math.round(elapsedTime / 60000);
-          Logger.info(
-            `Scan still in progress (${elapsedMinutes} minute${
-              elapsedMinutes !== 1 ? "s" : ""
-            } elapsed). Job status: ${jobData.status || "unknown"}`
+          const jobData = jobResponse.data?.data;
+          Logger.debug(
+            `Job polling response (attempt ${attempt + 1}):`,
+            JSON.stringify(jobResponse.data, null, 2)
           );
-        }
 
-        if (jobData.status?.toLowerCase() === "completed") {
-          Logger.debug("Job completed", JSON.stringify(jobData, null, 2));
-          // Step 3: Get the result ID and fetch detailed results
-          const resultsData: VulnZapResponse = jobResponse.data;
-          if (!resultsData) {
-            throw new Error("No results data returned from results endpoint");
+          if (!jobData) {
+            Logger.warn("No job data received from API response");
+            await this.sleep(pollingInterval);
+            continue;
           }
 
-          Logger.debug(
-            `Results data structure:`,
-            JSON.stringify(resultsData, null, 2)
-          );
+          Logger.debug(`Job status: ${jobData.status}`);
 
-          // Additional detailed logging for debugging
-          Logger.debug("Response analysis:");
-          Logger.debug("- resultsData.success:", resultsData.success);
-          Logger.debug("- resultsData.data type:", typeof resultsData.data);
-          if (resultsData.data) {
-            Logger.debug(
-              "- resultsData.data keys:",
-              Object.keys(resultsData.data)
+          // Provide progress feedback for long-running scans
+          const elapsedTime = Date.now() - startTime;
+          if (elapsedTime > 60000 && attempt % 3 === 0) {
+            // Every 3rd attempt after 1 minute
+            const elapsedMinutes = Math.round(elapsedTime / 60000);
+            Logger.info(
+              `Scan still in progress (${elapsedMinutes} minute${
+                elapsedMinutes !== 1 ? "s" : ""
+              } elapsed). Job status: ${jobData.status || "unknown"}`
             );
           }
 
-          // Log the interaction for debugging and analytics
-          await LLMLogger.logLLMInteraction(
-            this.name,
-            code,
-            JSON.stringify(resultsData),
-            {
-              language,
-              codeLength: code.length,
-              fastScan,
-              approach: "text-based",
-              jobId,
-              pollingAttempts: attempt + 1,
-              totalPollingTime: Date.now() - startTime,
+          if (jobData.status?.toLowerCase() === "completed") {
+Logger.info(`Job ${jobId} completed for file ${filePath}`);
+            // Clean up job tracking
+            this.runningJobs.delete(filePath);
+            // Step 3: Get the result ID and fetch detailed results
+            const resultsData = jobResponse.data;
+            if (!resultsData) {
+              throw new Error("No results data returned from results endpoint");
             }
-          );
 
-          return this.normalizeResponse(resultsData);
-        } else if (jobData.status?.toLowerCase() === "failed") {
-          throw new Error(
-            `Scan job failed: ${jobData.error || "Unknown error"}`
-          );
+            Logger.info(
+              `Results data structure:`,
+              JSON.stringify(resultsData, null, 2)
+            );
+
+            // Additional detailed logging for debugging
+            Logger.debug("Response analysis:");
+            Logger.debug("- resultsData.success:", resultsData.success);
+            Logger.debug("- resultsData.data type:", typeof resultsData.data);
+            if (resultsData.data) {
+              Logger.debug(
+                "- resultsData.data keys:",
+                Object.keys(resultsData.data)
+              );
+            }
+            return this.normalizeResponse(resultsData);
+          } else if (jobData.status?.toLowerCase() === "failed") {
+Logger.error(`Job ${jobId} failed for file ${filePath}: ${jobData.error || "Unknown error"}`);
+            // Clean up job tracking
+            this.runningJobs.delete(filePath);
+            throw new Error(
+              `Scan job failed: ${jobData.error || "Unknown error"}`
+            );
+          }
+
+          // Job is still in progress, wait before next poll with exponential backoff
+          await this.sleep(pollingInterval);
+
+          // Increase polling interval exponentially, but cap at maximum
+          pollingInterval = Math.min(pollingInterval * 1.5, maxPollingInterval);
+          attempt++;
+        } catch (error: any) {
+          if (error.response?.status === 404) {
+            throw new Error("Scan job not found");
+          }
+          // If it's a rate limit error during polling, it will be handled by makeApiCallWithRetry
+          throw error;
         }
-
-        // Job is still in progress, wait before next poll with exponential backoff
-        await this.sleep(pollingInterval);
-
-        // Increase polling interval exponentially, but cap at maximum
-        pollingInterval = Math.min(pollingInterval * 1.5, maxPollingInterval);
-        attempt++;
-      } catch (error: any) {
-        if (error.response?.status === 404) {
-          throw new Error("Scan job not found");
-        }
-        // If it's a rate limit error during polling, it will be handled by makeApiCallWithRetry
-        throw error;
       }
-    }
 
-    // Failsafe: if we somehow exit the loop without completing
-    const elapsedHours = Math.round((Date.now() - startTime) / 3600000);
-    throw new Error(
-      `Scan job exceeded maximum polling attempts (${maxPollingAttempts}) after ${elapsedHours} hours. ` +
-        `The job may be stuck or the server may be unresponsive. Please try again or contact support.`
-    );
+      // Failsafe: if we somehow exit the loop without completing
+      // Clean up job tracking
+      this.runningJobs.delete(filePath);
+      const elapsedHours = Math.round((Date.now() - startTime) / 3600000);
+      throw new Error(
+        `Scan job exceeded maximum polling attempts (${maxPollingAttempts}) after ${elapsedHours} hours. ` +
+          `The job may be stuck or the server may be unresponsive. Please try again or contact support.`
+      );
+    } catch (error) {
+      // Ensure job cleanup on any error
+      if (jobId) {
+        this.runningJobs.delete(filePath);
+        Logger.info(`Cleaned up job tracking for ${filePath} due to error`);
+      }
+      throw error;
+    }
   }
 
   /**
@@ -680,9 +609,7 @@ export class VulnZapProvider implements APIProvider {
     apiCall: () => Promise<T>,
     maxRetries?: number
   ): Promise<T> {
-    const config = vscode.workspace.getConfiguration("vulnzap");
-    const configuredRetries = config.get("retryAttempts", 3);
-    const actualMaxRetries = maxRetries ?? configuredRetries;
+    const actualMaxRetries = maxRetries ?? VulnZapConfig.api.retry.defaultAttempts;
     let lastError: any;
 
     for (let attempt = 0; attempt <= actualMaxRetries; attempt++) {
@@ -747,6 +674,63 @@ export class VulnZapProvider implements APIProvider {
   }
 
   /**
+   * Cancels a running scan job
+   */
+  private async cancelJob(jobId: string, apiKey: string): Promise<void> {
+    try {
+      Logger.info(`Cancelling job: ${jobId}`);
+      
+      await this.makeApiCallWithRetry(async () => {
+        return axios.post(
+          getJobApiUrl(jobId, "cancel"),
+          {},
+          {
+            headers: {
+              "x-api-key": `${apiKey}`,
+              "Content-Type": "application/json",
+              "User-Agent": VulnZapConfig.userAgent,
+            },
+          }
+        );
+      });
+      
+      Logger.info(`Successfully cancelled job: ${jobId}`);
+    } catch (error: any) {
+      Logger.warn(`Failed to cancel job ${jobId}:`, error.message);
+      // Don't throw error - cancellation failure shouldn't block new scans
+    }
+  }
+
+  /**
+   * Gets information about currently running jobs (for debugging)
+   */
+  public getRunningJobsInfo(): { filePath: string; jobId: string }[] {
+    return Array.from(this.runningJobs.entries()).map(([filePath, jobId]) => ({
+      filePath,
+      jobId
+    }));
+  }
+
+  /**
+   * Cancels any running job for the given file path
+   */
+  private async cancelPreviousJobForFile(filePath: string, apiKey: string): Promise<void> {
+    const existingJobId = this.runningJobs.get(filePath);
+    if (existingJobId) {
+Logger.info(`Cancelling existing job ${existingJobId} for file ${filePath}`);
+      try {
+        await this.cancelJob(existingJobId, apiKey);
+Logger.info(`Successfully cancelled job ${existingJobId}`);
+      } catch (error) {
+Logger.warn(`Failed to cancel job ${existingJobId}, but continuing with new scan`);
+      }
+      this.runningJobs.delete(filePath);
+    } else {
+      Logger.debug(`No existing job found for file ${filePath}`);
+    }
+  }
+
+  /**
    * Normalizes the response from the VulnZap API
    * @param data - The response from the VulnZap API
    * @returns The normalized response
@@ -764,14 +748,8 @@ export class VulnZapProvider implements APIProvider {
       if (data.data && typeof data.data === "object") {
         Logger.debug("Data structure analysis:");
         Logger.debug("- Has 'results':", "results" in data.data);
-        Logger.debug(
-          "- Has 'vulnerabilities':",
-          "vulnerabilities" in data.data
-        );
-        Logger.debug(
-          "- Has 'standaloneVulnerabilities':",
-          "standaloneVulnerabilities" in data.data
-        );
+        Logger.debug("- Job status:", data.data.status);
+        Logger.debug("- Job progress:", data.data.progress);
         if ("results" in data.data && data.data.results) {
           Logger.debug("- Results keys:", Object.keys(data.data.results));
           if (data.data.results.vulnerabilities) {
@@ -783,16 +761,15 @@ export class VulnZapProvider implements APIProvider {
         }
       }
 
-      // Handle new nested response format
-      if ("results" in data.data && data.data.results) {
-        // New API response format
+      // Handle new API response format (always has results structure now)
+      if (data.data.results && data.data.results.vulnerabilities) {
         const results = data.data.results;
 
         for (const fileResult of results.vulnerabilities) {
           totalScanTime += fileResult.scanTime || 0;
           totalLinesOfCode += fileResult.linesOfCode || 0;
 
-          // Process taint vulnerabilities
+          // Process taint vulnerabilities with new structure
           if (fileResult.taintVulnerabilities) {
             const taintVulns = fileResult.taintVulnerabilities.map(
               (vuln: TaintVulnerability) => ({
@@ -802,16 +779,20 @@ export class VulnZapProvider implements APIProvider {
                 vulnerabilityType: "taint",
                 // Map sink location to standard format
                 line: vuln.sink.lineNumber,
-                column: vuln.sink.columnNumber,
+                column: 1, // No column info in new format, default to 1
                 snippet: vuln.sink.codeSnippet,
                 // Include taint flow information
                 taintFlowPath: vuln.taintFlowPath,
+                // Include patched code information
+                patchedCode: vuln.patchedCode,
+                // Map severity from confidence (if not provided, infer from confidence)
+                severity: this.inferSeverityFromConfidence(vuln.confidence),
               })
             );
             allVulnerabilities.push(...taintVulns);
           }
 
-          // Process standalone vulnerabilities
+          // Process standalone vulnerabilities with new format
           if (fileResult.standaloneVulnerabilities) {
             const standaloneVulns = fileResult.standaloneVulnerabilities.map(
               (vuln: StandaloneVulnerability) => ({
@@ -819,54 +800,22 @@ export class VulnZapProvider implements APIProvider {
                 file: fileResult.file,
                 language: fileResult.language,
                 vulnerabilityType: "standalone",
-                // Map location to standard format
-                line: vuln.location.start.row,
-                column: vuln.location.start.column,
-                endLine: vuln.location.end.row,
-                endColumn: vuln.location.end.column,
-                snippet: vuln.location.snippet,
+                // Map new format to standard format
+                line: vuln.lineNumber,
+                column: 1, // No column info in new format, default to 1
+                endLine: vuln.lineNumber, // Same line for standalone vulns
+                endColumn: vuln.codeSnippet?.length || 10, // Estimate end column
+                snippet: vuln.codeSnippet,
+                // Map severity from confidence (if not provided, infer from confidence)
+                severity: this.inferSeverityFromConfidence(vuln.confidence),
               })
             );
             allVulnerabilities.push(...standaloneVulns);
           }
         }
       } else {
-        // Legacy format - combine both vulnerabilities and standaloneVulnerabilities
-        const legacyData = data.data as ScanResult;
-        allVulnerabilities = [
-          ...(legacyData.vulnerabilities || []),
-          ...(legacyData.standaloneVulnerabilities || []),
-        ];
-
-        // Additional fallback: check if the response has vulnerabilities directly in the data object
-        // This handles cases where the API returns vulnerabilities in a different structure
-        if (
-          allVulnerabilities.length === 0 &&
-          data.data &&
-          typeof data.data === "object"
-        ) {
-          Logger.debug("Trying additional response format checks...");
-
-          // Check for direct vulnerabilities array in various possible locations
-          const possibleVulnArrays = [
-            (data.data as any).vulnerabilities,
-            (data.data as any).issues,
-            (data.data as any).findings,
-            (data.data as any).results?.vulnerabilities,
-            (data.data as any).scan?.vulnerabilities,
-            (data.data as any).analysis?.vulnerabilities,
-          ];
-
-          for (const vulnArray of possibleVulnArrays) {
-            if (Array.isArray(vulnArray) && vulnArray.length > 0) {
-              Logger.debug(
-                `Found vulnerabilities in alternative format: ${vulnArray.length} items`
-              );
-              allVulnerabilities = vulnArray;
-              break;
-            }
-          }
-        }
+        Logger.warn("No results found in API response - expected results.vulnerabilities structure");
+        Logger.debug("Full response for debugging:", JSON.stringify(data, null, 2));
       }
 
       if (allVulnerabilities.length === 0) {
@@ -912,20 +861,19 @@ export class VulnZapProvider implements APIProvider {
           snippet = "";
 
         if (vuln.vulnerabilityType === "taint") {
-          // Taint vulnerability uses sink location
+          // Taint vulnerability uses sink location (new format)
           line = vuln.line || vuln.sink?.lineNumber || 1;
-          column = vuln.column || vuln.sink?.columnNumber || 1;
+          column = vuln.column || 1; // New format doesn't have column info
           endLine = line; // Taint vulns typically don't have end positions
           endColumn = column + (vuln.snippet?.length || 10);
           snippet = vuln.snippet || vuln.sink?.codeSnippet || "";
-        } else if (vuln.vulnerabilityType === "standalone" || vuln.location) {
-          // Standalone vulnerability uses location object
-          line = vuln.line || vuln.location?.start?.row || 1;
-          column = vuln.column || vuln.location?.start?.column || 1;
-          endLine = vuln.endLine || vuln.location?.end?.row || line;
-          endColumn = vuln.endColumn || vuln.location?.end?.column || column;
-          snippet =
-            vuln.snippet || vuln.location?.snippet || vuln.codeSnippet || "";
+        } else if (vuln.vulnerabilityType === "standalone") {
+          // Standalone vulnerability uses direct line number (new format)
+          line = vuln.line || vuln.lineNumber || 1;
+          column = vuln.column || 1; // New format doesn't have column info
+          endLine = vuln.endLine || line;
+          endColumn = vuln.endColumn || column + (vuln.codeSnippet?.length || 10);
+          snippet = vuln.snippet || vuln.codeSnippet || "";
         } else {
           // Legacy format
           line = vuln.line || 1;
@@ -947,7 +895,7 @@ export class VulnZapProvider implements APIProvider {
             "Security issue detected",
           severity: this.mapSeverityToVSCode(vuln.severity),
           code: vuln.type || vuln.vulnerabilityId || "SECURITY_ISSUE",
-          suggestion: vuln.remediation || this.generateSuggestion(vuln),
+          suggestion: this.formatSuggestion(vuln) || vuln.remediation,
           confidence: Math.min(
             100,
             Math.max(0, Math.round((vuln.confidence ?? 0.5) * 100))
@@ -956,6 +904,8 @@ export class VulnZapProvider implements APIProvider {
           searchQuery: vuln.type || vuln.category,
           // Additional data for enhanced analysis
           taintFlowPath: vuln.taintFlowPath,
+          patchedCode: vuln.patchedCode, // New field for patched code suggestions
+          keywords: vuln.keywords, // New field for vulnerability keywords
           owasp: vuln.owasp,
           framework: vuln.framework,
           metadata: vuln.metadata,
@@ -987,22 +937,67 @@ export class VulnZapProvider implements APIProvider {
   }
 
   /**
-   * Generates a suggestion for remediation based on vulnerability type
+   * Formats suggestion based on vulnerability type and patched code format
    */
-  private generateSuggestion(vuln: any): string | undefined {
-    if (
-      vuln.type === "hardcoded_credentials" ||
-      vuln.category === "hardcoded_credentials"
-    ) {
-      return "Remove hardcoded credentials and use environment variables or secure credential storage instead.";
+  private formatSuggestion(vuln: any): string | undefined {
+    if (!vuln.patchedCode) {
+      return undefined;
     }
-    if (vuln.type === "injection" || vuln.category === "injection") {
-      return "Use parameterized queries or input validation to prevent injection attacks.";
+
+    // Handle array-based patched code (taint vulnerabilities)
+    if (Array.isArray(vuln.patchedCode)) {
+      return this.formatPatchedCodeSuggestion(vuln.patchedCode);
     }
-    if (vuln.owasp?.includes("Authentication")) {
-      return "Implement proper authentication mechanisms and avoid predictable tokens.";
+
+    // Handle string-based patched code (standalone vulnerabilities)
+    if (typeof vuln.patchedCode === 'string') {
+      return this.formatStandalonePatchedCode(vuln.patchedCode);
     }
+
     return undefined;
+  }
+
+  /**
+   * Formats patched code into a user-friendly suggestion with actual code implementations
+   */
+  private formatPatchedCodeSuggestion(patchedCode?: Array<{
+    lineNumber: number;
+    stepNumber: number;
+    codeSnippet: string;
+    description: string;
+    originalFilePath: string;
+  }>): string | undefined {
+    if (!patchedCode || patchedCode.length === 0) {
+      return undefined;
+    }
+
+    // Sort by step number to ensure correct order
+    const sortedPatches = [...patchedCode].sort((a, b) => a.stepNumber - b.stepNumber);
+    
+let suggestion = "**Recommended Fix:**\n\n";
+    
+    sortedPatches.forEach((patch, index) => {
+      suggestion += `**Step ${patch.stepNumber}:** ${patch.description}\n`;
+      suggestion += "```\n";
+      suggestion += patch.codeSnippet;
+      suggestion += "\n```\n";
+      if (index < sortedPatches.length - 1) {
+        suggestion += "\n";
+      }
+    });
+
+    return suggestion;
+  }
+
+  /**
+   * Formats standalone patched code (simple string format)
+   */
+  private formatStandalonePatchedCode(patchedCode?: string): string | undefined {
+    if (!patchedCode || typeof patchedCode !== 'string') {
+      return undefined;
+    }
+
+return `**Recommended Fix:**\n\n\`\`\`\n${patchedCode}\n\`\`\``;
   }
 
   /**
@@ -1049,6 +1044,16 @@ export class VulnZapProvider implements APIProvider {
     }
 
     return summary;
+  }
+
+  /**
+   * Infers severity level from confidence score
+   */
+  private inferSeverityFromConfidence(confidence: number): string {
+    if (confidence >= 90) return "high";
+    if (confidence >= 70) return "medium";
+    if (confidence >= 50) return "low";
+    return "low";
   }
 
   /**

@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 import { Logger } from "./logger";
+import { VulnZapConfig, getApiUrl } from "./config";
 
 export interface UsageData {
   lineScans: number;
@@ -217,10 +218,9 @@ export class UsageService {
     try {
       const config = vscode.workspace.getConfiguration("vulnzap");
       const apiKey = config.get("vulnzapApiKey", "").trim();
-      const apiUrl = config.get("vulnzapApiUrl", "").trim();
 
-      if (!apiKey || !apiUrl) {
-        throw new Error("VulnZap API key and URL are required");
+      if (!apiKey) {
+        throw new Error("VulnZap API key is required");
       }
 
       Logger.info("Fetching usage data from API...");
@@ -230,11 +230,12 @@ export class UsageService {
         await this.fetchUserProfile();
       }
 
-      const response = await fetch(`${apiUrl}/api/user/usage`, {
+      const response = await fetch(getApiUrl("userUsage"), {
         method: "GET",
         headers: {
           "x-api-key": apiKey,
           "Content-Type": "application/json",
+          "User-Agent": VulnZapConfig.userAgent,
         },
         cache: "no-store",
       });
@@ -297,20 +298,20 @@ export class UsageService {
     try {
       const config = vscode.workspace.getConfiguration("vulnzap");
       const apiKey = config.get("vulnzapApiKey", "").trim();
-      const apiUrl = config.get("vulnzapApiUrl", "").trim();
 
-      if (!apiKey || !apiUrl) {
-        Logger.warn("VulnZap API key and URL are required for profile fetch");
+      if (!apiKey) {
+        Logger.warn("VulnZap API key is required for profile fetch");
         return null;
       }
 
       Logger.debug("Fetching user profile from API...");
 
-      const response = await fetch(`${apiUrl}/api/user/profile`, {
+      const response = await fetch(getApiUrl("userProfile"), {
         method: "GET",
         headers: {
           "x-api-key": apiKey,
           "Content-Type": "application/json",
+          "User-Agent": VulnZapConfig.userAgent,
         },
         cache: "no-store",
       });

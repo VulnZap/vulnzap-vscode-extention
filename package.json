@@ -2,7 +2,7 @@
   "name": "vulnzap",
   "displayName": "VulnZap",
   "description": "AI-powered security analysis for JavaScript, TypeScript, React (JSX/TSX), Python, and Java code. Detects vulnerabilities like XSS, SQL injection, and weak cryptography with high accuracy.",
-  "version": "0.2.7",
+  "version": "0.2.8",
   "publisher": "vulnzap",
   "icon": "icon.png",
   "repository": {
@@ -304,30 +304,10 @@
           "default": true,
           "description": "Enable/disable on-save security scanning"
         },
-        "vulnzap.severity": {
-          "type": "string",
-          "enum": [
-            "error",
-            "warning",
-            "info"
-          ],
-          "default": "warning",
-          "description": "Default severity level for security issues"
-        },
         "vulnzap.vulnzapApiKey": {
           "type": "string",
           "default": "",
-          "description": "VulnZap API key for specialized security analysis"
-        },
-        "vulnzap.vulnzapApiUrl": {
-          "type": "string",
-          "default": "https://api.vulnzap.com",
-          "description": "VulnZap API base URL"
-        },
-        "vulnzap.vulnzapApiProvider": {
-          "type": "string",
-          "default": "",
-          "description": "Selected API provider for VulnZap analysis"
+          "description": "VulnZap API key for security analysis"
         },
         "vulnzap.enableDependencyScanning": {
           "type": "boolean",
@@ -343,40 +323,6 @@
           "type": "boolean",
           "default": false,
           "description": "Enable detailed debug logging for troubleshooting (visible in VulnZap output channel)"
-        },
-        "vulnzap.hasSeenLayoutTip": {
-          "type": "boolean",
-          "default": false,
-          "description": "Whether user has seen the layout optimization tip"
-        },
-        "vulnzap.maxFileSizeBytes": {
-          "type": "number",
-          "default": 1000000,
-          "description": "Maximum file size (in bytes) to scan. Files larger than this will be skipped. Default: 1,000,000 (1MB)"
-        },
-        "vulnzap.maxFileLines": {
-          "type": "number",
-          "default": 2000,
-          "description": "Maximum number of lines in a file to scan. Files with more lines will be skipped. Default: 2000"
-        },
-        "vulnzap.maxIssuesPerFile": {
-          "type": "number",
-          "default": 100,
-          "description": "Maximum number of issues to report per file. Scanning stops after this many issues are found. Default: 100"
-        },
-        "vulnzap.retryAttempts": {
-          "type": "number",
-          "default": 3,
-          "minimum": 1,
-          "maximum": 10,
-          "description": "Number of retry attempts for API calls when rate limited. Default: 3"
-        },
-        "vulnzap.requestQueueDelay": {
-          "type": "number",
-          "default": 500,
-          "minimum": 0,
-          "maximum": 5000,
-          "description": "Delay in milliseconds between queued API requests to prevent overwhelming the server. Default: 500ms"
         },
         "vulnzap.excludeFilePatterns": {
           "type": "array",

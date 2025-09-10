@@ -149,7 +149,7 @@ export class DependencyDiagnosticProvider implements vscode.Disposable {
             relatedInfo.push(
               new vscode.DiagnosticRelatedInformation(
                 new vscode.Location(document.uri, range),
-                `💡 Fixed in version: ${vuln.fixedIn}`
+`Fixed in version: ${vuln.fixedIn}`
               )
             );
           }
@@ -158,7 +158,7 @@ export class DependencyDiagnosticProvider implements vscode.Disposable {
             relatedInfo.push(
               new vscode.DiagnosticRelatedInformation(
                 new vscode.Location(document.uri, range),
-                `🔍 CVE: ${vuln.cveId}`
+`CVE: ${vuln.cveId}`
               )
             );
           }

@@ -52,9 +52,9 @@ body {
 }
 
 .action-btn {
-  background: transparent;
-  border: 1px solid var(--vscode-button-border, transparent);
-  color: var(--vscode-button-foreground);
+  background: var(--vscode-button-secondaryBackground, rgba(255, 255, 255, 0.1));
+  border: 1px solid var(--vscode-button-border, var(--vscode-contrastBorder, rgba(255, 255, 255, 0.2)));
+  color: var(--vscode-button-secondaryForeground, var(--vscode-foreground));
   padding: 4px 6px;
   border-radius: 3px;
   cursor: pointer;
@@ -63,11 +63,14 @@ body {
   align-items: center;
   gap: 4px;
   transition: all 0.2s ease;
+  opacity: 0.9;
 }
 
 .action-btn:hover {
-  background: var(--vscode-button-hoverBackground);
-  border-color: var(--vscode-button-border);
+  background: var(--vscode-button-hoverBackground, var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.2)));
+  border-color: var(--vscode-button-border, var(--vscode-focusBorder, rgba(255, 255, 255, 0.3)));
+  opacity: 1;
+  transform: translateY(-1px);
 }
 
 .action-btn .icon {
@@ -333,11 +336,40 @@ body {
   border-color: rgba(255, 193, 7, 0.3);
 }
 
+/* Theme-specific button adjustments */
+.vscode-dark .action-btn {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.15);
+  color: var(--vscode-foreground);
+}
+
+.vscode-dark .action-btn:hover {
+  background: rgba(255, 255, 255, 0.15);
+  border-color: rgba(255, 255, 255, 0.25);
+}
+
+.vscode-light .action-btn {
+  background: rgba(0, 0, 0, 0.05);
+  border-color: rgba(0, 0, 0, 0.15);
+  color: var(--vscode-foreground);
+}
+
+.vscode-light .action-btn:hover {
+  background: rgba(0, 0, 0, 0.1);
+  border-color: rgba(0, 0, 0, 0.2);
+}
+
 /* High contrast theme adjustments */
 .vscode-high-contrast .stat-item {
   border: 2px solid var(--vscode-contrastBorder);
 }
 
 .vscode-high-contrast .action-btn {
-  border: 1px solid var(--vscode-contrastBorder);
+  border: 2px solid var(--vscode-contrastBorder);
+  background: var(--vscode-button-background);
+  color: var(--vscode-button-foreground);
+}
+
+.vscode-high-contrast .action-btn:hover {
+  background: var(--vscode-button-hoverBackground);
 }

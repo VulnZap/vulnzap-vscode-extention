@@ -240,8 +240,12 @@ export class DiagnosticProvider {
       diagnostic.code = issue.code;
       diagnostic.source = "VulnZap";
 
-      // Add additional information for hover tooltips
+      // Store suggestion data for code actions
       if (issue.suggestion) {
+        // Add the suggestion as a custom property for the code action provider
+        (diagnostic as any).suggestion = issue.suggestion;
+        
+        // Also add as related information for hover tooltips
         diagnostic.relatedInformation = [
           new vscode.DiagnosticRelatedInformation(
             new vscode.Location(document.uri, range),

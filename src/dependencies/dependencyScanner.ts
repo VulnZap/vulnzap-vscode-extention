@@ -6,6 +6,7 @@ import {
   DependencyScanResult,
   VulnerabilityInfo,
 } from "./dependencyCache";
+import { VulnZapConfig, getApiUrl } from "../utils/config";
 
 export interface BatchScanRequest {
   packages: Array<{
@@ -221,11 +222,7 @@ export class DependencyScanner {
   ): Promise<DependencyScanResult | null> {
     const config = vscode.workspace.getConfiguration("vulnzap");
     const apiKey = config.get<string>("vulnzapApiKey");
-    const apiUrl = config.get<string>(
-      "vulnzapApiUrl",
-      "https://engine.vulnzap.com"
-    );
-    const timeout = 60000; // Hardcoded timeout: 60 seconds
+    const timeout = VulnZapConfig.api.timeouts.defaultRequest;
 
     if (!apiKey) {
       vscode.window.showErrorMessage(
@@ -259,13 +256,13 @@ export class DependencyScanner {
         progress.report({ increment: 0, message: "Scanning packages..." });
 
         const response = await axios.post<BatchScanResponse>(
-          `${apiUrl}/api/scan/dependency`,
+          getApiUrl("dependencyScanning"),
           batchRequest,
           {
             headers: {
               "x-api-key": `${apiKey}`,
               "Content-Type": "application/json",
-              "User-Agent": "VulnZap-VSCode-Extension",
+              "User-Agent": VulnZapConfig.userAgent,
             },
             timeout,
           }
@@ -444,7 +441,7 @@ export class DependencyScanner {
 
     if (totalVulns === 0) {
       vscode.window.showInformationMessage(
-        `✅ No vulnerabilities found in ${scanResult.totalPackages} dependencies.`
+`No vulnerabilities found in ${scanResult.totalPackages} dependencies.`
       );
       return;
     }
@@ -453,7 +450,7 @@ export class DependencyScanner {
     const hasCritical = summary.critical > 0;
     const hasHigh = summary.high > 0;
 
-    let message = `🔍 Found ${totalVulns} vulnerabilities in ${scanResult.vulnerablePackages} packages: `;
+let message = `Found ${totalVulns} vulnerabilities in ${scanResult.vulnerablePackages} packages: `;
     const parts: string[] = [];
 
     if (summary.critical > 0) parts.push(`${summary.critical} critical`);
@@ -521,13 +518,13 @@ export class DependencyScanner {
 
     // Summary section
     report += `## Summary\n\n`;
-    report += `- 🔴 Critical: ${summary.critical}\n`;
-    report += `- 🟠 High: ${summary.high}\n`;
-    report += `- 🟡 Medium: ${summary.medium}\n`;
-    report += `- 🔵 Low: ${summary.low}\n\n`;
+report += `- Critical: ${summary.critical}\n`;
+report += `- High: ${summary.high}\n`;
+    report += `- Medium: ${summary.medium}\n`;
+    report += `- Low: ${summary.low}\n\n`;
 
     if (vulnerabilities.length === 0) {
-      report += `✅ No vulnerabilities detected!\n\n`;
+report += `No vulnerabilities detected!\n\n`;
       return report;
     }
 
@@ -545,16 +542,7 @@ export class DependencyScanner {
     for (const [severity, vulns] of Object.entries(grouped)) {
       if (vulns.length === 0) continue;
 
-      const emoji =
-        severity === "critical"
-          ? "🔴"
-          : severity === "high"
-          ? "🟠"
-          : severity === "medium"
-          ? "🟡"
-          : "🔵";
-
-      report += `### ${emoji} ${severity.toUpperCase()} (${vulns.length})\n\n`;
+report += `### ${severity.toUpperCase()} (${vulns.length})\n\n`;
 
       for (const vuln of vulns) {
         report += `#### ${vuln.packageName}@${vuln.packageVersion}\n\n`;
