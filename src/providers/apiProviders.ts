@@ -118,15 +118,27 @@ export interface StandaloneVulnerability {
   confidence: number;
   originalFilePath: string;
   codeSnippet: string;
-  patchedCode: string;
-  lineNumber: number;
+  patchedCode: {
+    startLine: number;
+    endLine: number;
+    startColumn: number;
+    endColumn: number;
+    newCode: string;
+  };
+  location: {
+    start: { row: number; column: number };
+    end: { row: number; column: number };
+  };
 }
 
 export interface SimplifiedTaintFlowStep {
   stepNumber: number;
   filePath: string;
   originalFilePath: string;
-  lineNumber: number;
+  location: {
+    start: { row: number; column: number };
+    end: { row: number; column: number };
+  };
   codeSnippet: string;
   description: string;
 }
@@ -140,14 +152,20 @@ export interface TaintVulnerability {
   source: {
     originalFilePath: string;
     filePath: string;
-    lineNumber: number;
+    location: {
+      start: { row: number; column: number };
+      end: { row: number; column: number };
+    };
     codeSnippet: string;
     description: string;
   }
   sink: {
     originalFilePath: string;
     filePath: string;
-    lineNumber: number;
+    location: {
+      start: { row: number; column: number };
+      end: { row: number; column: number };
+    };
     codeSnippet: string;
     description: string;
   }
@@ -156,7 +174,10 @@ export interface TaintVulnerability {
     stepNumber: number;
     description: string;
     originalFilePath: string;
-    lineNumber: number;
+    location: {
+      start: { row: number; column: number };
+      end: { row: number; column: number };
+    };
     codeSnippet: string;
   }>;
 }
@@ -778,8 +799,10 @@ Logger.warn(`Failed to cancel job ${existingJobId}, but continuing with new scan
                 language: fileResult.language,
                 vulnerabilityType: "taint",
                 // Map sink location to standard format
-                line: vuln.sink.lineNumber,
-                column: 1, // No column info in new format, default to 1
+                line: vuln.sink.location.start.row,
+                column: vuln.sink.location.start.column,
+                endLine: vuln.sink.location.end.row,
+                endColumn: vuln.sink.location.end.column,
                 snippet: vuln.sink.codeSnippet,
                 // Include taint flow information
                 taintFlowPath: vuln.taintFlowPath,
@@ -801,10 +824,10 @@ Logger.warn(`Failed to cancel job ${existingJobId}, but continuing with new scan
                 language: fileResult.language,
                 vulnerabilityType: "standalone",
                 // Map new format to standard format
-                line: vuln.lineNumber,
-                column: 1, // No column info in new format, default to 1
-                endLine: vuln.lineNumber, // Same line for standalone vulns
-                endColumn: vuln.codeSnippet?.length || 10, // Estimate end column
+                line: vuln.location.start.row,
+                column: vuln.location.start.column,
+                endLine: vuln.location.end.row,
+                endColumn: vuln.location.end.column,
                 snippet: vuln.codeSnippet,
                 // Map severity from confidence (if not provided, infer from confidence)
                 severity: this.inferSeverityFromConfidence(vuln.confidence),
@@ -862,32 +885,32 @@ Logger.warn(`Failed to cancel job ${existingJobId}, but continuing with new scan
 
         if (vuln.vulnerabilityType === "taint") {
           // Taint vulnerability uses sink location (new format)
-          line = vuln.line || vuln.sink?.lineNumber || 1;
-          column = vuln.column || 1; // New format doesn't have column info
-          endLine = line; // Taint vulns typically don't have end positions
-          endColumn = column + (vuln.snippet?.length || 10);
-          snippet = vuln.snippet || vuln.sink?.codeSnippet || "";
-        } else if (vuln.vulnerabilityType === "standalone") {
-          // Standalone vulnerability uses direct line number (new format)
-          line = vuln.line || vuln.lineNumber || 1;
-          column = vuln.column || 1; // New format doesn't have column info
+          line = vuln.line || 1;
+          column = vuln.column || 0;
           endLine = vuln.endLine || line;
-          endColumn = vuln.endColumn || column + (vuln.codeSnippet?.length || 10);
-          snippet = vuln.snippet || vuln.codeSnippet || "";
+          endColumn = vuln.endColumn || column;
+          snippet = vuln.snippet || "";
+        } else if (vuln.vulnerabilityType === "standalone") {
+          // Standalone vulnerability uses direct location (new format)
+          line = vuln.line || 1;
+          column = vuln.column || 0;
+          endLine = vuln.endLine || line;
+          endColumn = vuln.endColumn || column;
+          snippet = vuln.snippet || "";
         } else {
           // Legacy format
           line = vuln.line || 1;
-          column = vuln.column || 1;
+          column = vuln.column || 0;
           endLine = vuln.endLine || line;
           endColumn = vuln.endColumn || column;
           snippet = vuln.snippet || vuln.codeSnippet || "";
         }
 
         return {
-          line: Math.max(0, line - 1), // Convert to 0-based indexing
-          column: Math.max(0, column - 1),
-          endLine: Math.max(0, endLine - 1),
-          endColumn: Math.max(0, endColumn - 1),
+          line: Math.max(0, line - 1), // Convert row from 1-based to 0-based indexing
+          column: Math.max(0, column), // Column is already 0-based, don't subtract 1
+          endLine: Math.max(0, endLine - 1), // Convert row from 1-based to 0-based indexing
+          endColumn: Math.max(0, endColumn), // Column is already 0-based, don't subtract 1
           message:
             vuln.description ||
             vuln.title ||
@@ -949,7 +972,12 @@ Logger.warn(`Failed to cancel job ${existingJobId}, but continuing with new scan
       return this.formatPatchedCodeSuggestion(vuln.patchedCode);
     }
 
-    // Handle string-based patched code (standalone vulnerabilities)
+    // Handle object-based patched code (new standalone vulnerabilities format)
+    if (typeof vuln.patchedCode === 'object' && vuln.patchedCode.newCode) {
+      return this.formatStandaloneObjectPatchedCode(vuln.patchedCode);
+    }
+
+    // Handle string-based patched code (legacy standalone vulnerabilities)
     if (typeof vuln.patchedCode === 'string') {
       return this.formatStandalonePatchedCode(vuln.patchedCode);
     }
@@ -961,7 +989,10 @@ Logger.warn(`Failed to cancel job ${existingJobId}, but continuing with new scan
    * Formats patched code into a user-friendly suggestion with actual code implementations
    */
   private formatPatchedCodeSuggestion(patchedCode?: Array<{
-    lineNumber: number;
+    location: {
+      start: { row: number; column: number };
+      end: { row: number; column: number };
+    };
     stepNumber: number;
     codeSnippet: string;
     description: string;
@@ -974,7 +1005,7 @@ Logger.warn(`Failed to cancel job ${existingJobId}, but continuing with new scan
     // Sort by step number to ensure correct order
     const sortedPatches = [...patchedCode].sort((a, b) => a.stepNumber - b.stepNumber);
     
-let suggestion = "**Recommended Fix:**\n\n";
+let suggestion = "**zap:**\n\n";
     
     sortedPatches.forEach((patch, index) => {
       suggestion += `**Step ${patch.stepNumber}:** ${patch.description}\n`;
@@ -997,7 +1028,28 @@ let suggestion = "**Recommended Fix:**\n\n";
       return undefined;
     }
 
-return `**Recommended Fix:**\n\n\`\`\`\n${patchedCode}\n\`\`\``;
+return `**zap:**\n\n\`\`\`\n${patchedCode}\n\`\`\``;
+  }
+
+  /**
+   * Formats standalone patched code (object format with position info)
+   */
+  private formatStandaloneObjectPatchedCode(patchedCode?: {
+    startLine: number;
+    endLine: number;
+    startColumn: number;
+    endColumn: number;
+    newCode: string;
+  }): string | undefined {
+    if (!patchedCode || !patchedCode.newCode) {
+      return undefined;
+    }
+
+    const lineInfo = patchedCode.startLine === patchedCode.endLine 
+      ? `line ${patchedCode.startLine}` 
+      : `lines ${patchedCode.startLine}-${patchedCode.endLine}`;
+
+    return `**zap:** Replace ${lineInfo}\n\n\`\`\`\n${patchedCode.newCode}\n\`\`\``;
   }
 
   /**

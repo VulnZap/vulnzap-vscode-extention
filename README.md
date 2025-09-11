@@ -7,64 +7,7 @@
 
 A powerful Visual Studio Code extension that provides **real-time, AI-powered security analysis** for your code. VulnZap detects vulnerabilities like XSS, SQL injection, weak cryptography, and more with high accuracy across multiple programming languages.
 
-![VulnZap Demo](https://raw.githubusercontent.com/VulnZap/vulnzap-vscode-extention/main/demo.gif)
-
-## ✨ Features
-
-### 🤖 Advanced AI-Powered Analysis
-
-- **VulnZap Custom API**: Specialized security-focused analysis with batch scanning
-- **Multi-Provider Support**: Extensible API provider system for future integrations
-- **Context-Aware Detection**: Understands code patterns beyond simple regex
-- **Intelligent Fallback**: Pattern-based detection when AI is unavailable
-
-### 🔍 Comprehensive Security Coverage
-
-- **OWASP Top 10**: Complete coverage of major security risks
-- **Code Injection**: SQL injection, command injection, XSS, and LDAP injection
-- **Authentication & Authorization**: Weak authentication patterns and privilege escalation
-- **Cryptographic Issues**: Weak algorithms, insecure random generation, and key management
-- **Data Exposure**: Sensitive data leaks, insecure storage, and logging issues
-- **Configuration Issues**: Security misconfigurations and hardcoded secrets
-
-### 🌐 Multi-Language Support
-
-- **JavaScript & TypeScript**: Full ES6+ and Node.js support with AST-guided precision
-- **Python**: Django, Flask, FastAPI, and standard library
-- **Java**: Spring, servlet-based applications, and enterprise patterns
-
-### 🔄 Smart Analysis Features
-
-- **On-Save Scanning**: Analysis triggers when you save files for optimal performance
-- **Fast Scan Mode**: Quick initial analysis for immediate feedback
-- **Confidence Scoring**: Each finding includes accuracy confidence (50-100%)
-- **Context-Aware Detection**: Understands code patterns and reduces false positives
-- **Smart Caching**: Optimizes performance while maintaining accuracy
-
-### 📦 Advanced Dependency Vulnerability Scanning
-
-- **Multi-Ecosystem Support**: npm, pip, go, rust, gradle, maven, composer, rubygems, and more
-- **Automatic Detection**: Scans package.json, requirements.txt, go.mod, Cargo.toml, pom.xml, etc.
-- **Real-time Monitoring**: Automatically scans when dependency files are saved
-- **Intelligent Caching**: 5-day cache with dependency change detection
-- **Batch API Integration**: Efficient vulnerability database queries
-- **Detailed Reports**: Comprehensive markdown reports with CVE information, severity levels, and fix recommendations
-
-### 🗂️ Codebase Indexing System
-
-- **Vector-Based Analysis**: Semantic code similarity detection using text embeddings
-- **Incremental Indexing**: Smart updates when files change
-- **Security Pattern Recognition**: Identifies similar vulnerable patterns across the codebase
-- **Context Retrieval**: Provides security-relevant context for enhanced analysis
-- **Performance Optimized**: Efficient storage and retrieval with configurable chunking
-
-### 📊 Enhanced Security View
-
-- **Unified Dashboard**: All security issues and dependency vulnerabilities in one view
-- **Issue Categorization**: Organized by severity and file for easy navigation
-- **Detailed Reports**: Comprehensive vulnerability information with fix suggestions
-- **Dependency Management**: Direct links to update commands and patch versions
-- **Real-time Updates**: Live synchronization with analysis results
+With an intuitive webview-based interface, login system, and comprehensive dependency scanning, VulnZap provides enterprise-grade security analysis directly in your development environment.
 
 ## 🚀 Installation
 
@@ -83,7 +26,18 @@ code --install-extension vulnzap.vulnzap
 
 ## ⚙️ Setup & Configuration
 
-### 1. Configure VulnZap API
+### 1. Sign In to VulnZap
+
+After installing the extension:
+
+1. Look for the VulnZap shield icon in the Activity Bar (left sidebar)
+2. Click **"Sign In"** in the VulnZap panel
+3. This will open your browser to authenticate with VulnZap
+4. Once authenticated, return to VS Code - you're ready to scan!
+
+### 2. Alternative: Manual API Configuration
+
+If you prefer to configure manually:
 
 Press `Ctrl+Shift+P` (Windows/Linux) or `Cmd+Shift+P` (Mac) and run:
 
@@ -91,11 +45,11 @@ Press `Ctrl+Shift+P` (Windows/Linux) or `Cmd+Shift+P` (Mac) and run:
 Security: Configure VulnZap API
 ```
 
-### 2. Getting Your VulnZap API Key
+### 3. Getting Your VulnZap Account
 
 1. Visit [VulnZap Platform](https://vulnzap.com)
-2. Create an account and generate an API key
-3. Enter it when prompted in VS Code
+2. Create an account (free tier available)
+3. Your API credentials will be managed automatically after login
 
 ## 🎯 Usage
 
@@ -117,14 +71,12 @@ VulnZap automatically scans your code when you save files. Security issues appea
 | **Security: Configure VulnZap API**   | Set up API credentials      |
 | **Security: Toggle Security Review**  | Quick enable/disable toggle |
 
-### Codebase Indexing Commands
+### Authentication Commands
 
-| Command                                  | Description                                     |
-| ---------------------------------------- | ----------------------------------------------- |
-| **Security: Build Security Index**       | Index the entire codebase for enhanced analysis |
-| **Security: View Index Statistics**      | Show indexing statistics and status             |
-| **Security: Clear Security Index**       | Remove all indexed data                         |
-| **Security: Find Similar Code Patterns** | Search for similar code patterns                |
+| Command                               | Description                          |
+| ------------------------------------- | ------------------------------------ |
+| **Security: Log In to VulnZap**      | Sign in to your VulnZap account     |
+| **Security: Sign Out of VulnZap**    | Sign out from VulnZap               |
 
 ### Dependency Scanning Commands
 
@@ -134,14 +86,20 @@ VulnZap automatically scans your code when you save files. Security issues appea
 | **Security: Force Dependency Scan (Ignore Cache)**  | Fresh dependency scan ignoring cache |
 | **Security: View Dependency Cache Statistics**      | Show cache status and statistics     |
 | **Security: Clean Dependency Cache**                | Remove expired cache entries         |
+| **Security: Fix All Dependencies**                  | Update all vulnerable dependencies   |
+| **Security: Show Update Command**                   | Display terminal commands for updates|
+| **Security: Show VulnZap Output Logs**              | View detailed extension logs         |
+| **Security: Show File Exclusion Information**       | View file exclusion statistics       |
+| **Security: Optimize Layout for VulnZap**           | Optimize VS Code layout for security work |
 
-### Status Bar Integration
+### VulnZap Activity Bar Panel
 
-The status bar shows current state:
+The VulnZap panel in the Activity Bar shows:
 
-- 🛡️ **Security: ON** - Active and scanning
-- 🛡️ **Security: OFF** - Disabled
-- 🛡️ **Security: ERROR** - Configuration issue
+- **Login View**: When not authenticated, shows sign-in options
+- **Usage Bar**: Real-time API usage tracking and quota monitoring
+- **Security Analysis**: Comprehensive view of all detected issues and vulnerabilities
+- **Dependency Management**: Interactive tools for fixing vulnerable dependencies
 
 ## 📋 Configuration Options
 
@@ -156,26 +114,6 @@ Open VS Code settings (`Ctrl+,`) and search for "VulnZap":
 }
 ```
 
-### AI Analysis Settings
-
-```json
-{
-  // AI analysis features are always enabled
-  // No configuration needed
-}
-```
-
-### Indexing Settings
-
-```json
-{
-  "vulnzap.enableVectorIndexing": true,
-  "vulnzap.autoIndexOnSave": true,
-  "vulnzap.vectorSimilarityThreshold": 0.7,
-  "vulnzap.indexChunkSize": 500
-}
-```
-
 ### Dependency Scanning Settings
 
 ```json
@@ -186,16 +124,17 @@ Open VS Code settings (`Ctrl+,`) and search for "VulnZap":
 }
 ```
 
-### Performance Settings
+### Additional Settings
 
 ```json
 {
-  "vulnzap.maxFileSizeBytes": 1000000,
-  "vulnzap.maxFileLines": 2000,
-  "vulnzap.maxIssuesPerFile": 100,
-  "vulnzap.enableDebugLogging": false
+  "vulnzap.vulnzapApiKey": "",
+  "vulnzap.enableDebugLogging": false,
+  "vulnzap.excludeFilePatterns": []
 }
 ```
+
+**Note**: File size limits (1MB), line limits (2000 lines), and performance settings are automatically managed by the extension for optimal performance.
 
 ## 🔍 Example Detections
 
@@ -317,65 +256,46 @@ vulnzap-vscode-extension/
 │   ├── core/                 # Main extension entry point and core functionality
 │   │   ├── extension.ts      # Main extension activation/deactivation
 │   │   └── index.ts          # Core exports
-│   ├── indexing/             # Codebase indexing and vector storage
-│   │   ├── codebaseIndexer.ts    # Main indexing orchestrator
-│   │   ├── textChunker.ts        # Code chunking for indexing
-│   │   ├── vectorStorage.ts      # Vector storage and retrieval
-│   │   ├── codeRetriever.ts      # Security context retrieval
-│   │   └── incrementalIndexer.ts # Incremental index updates
 │   ├── security/             # Security analysis components
-│   │   └── codebaseSecurityAnalyzer.ts # AI-powered security analysis
+│   │   ├── codebaseSecurityAnalyzer.ts # AI-powered security analysis
+│   │   └── index.ts          # Security exports
 │   ├── dependencies/         # Dependency vulnerability scanning
 │   │   ├── dependencyScanner.ts  # Main scanning orchestrator
 │   │   ├── dependencyParser.ts   # Multi-ecosystem dependency parsing
-│   │   └── dependencyCache.ts    # Intelligent result caching
+│   │   ├── dependencyCache.ts    # Intelligent result caching
+│   │   └── index.ts          # Dependency exports
 │   ├── providers/            # VS Code integration providers
 │   │   ├── apiProviders.ts       # API provider management
 │   │   ├── diagnosticProvider.ts # VS Code diagnostics integration
-│   │   ├── securityViewProvider.ts # Security tree view
-│   │   └── dependencyDiagnosticProvider.ts # Dependency diagnostics
-│   └── utils/                # Utility functions
-│       └── logger.ts         # Centralized logging
+│   │   ├── dependencyDiagnosticProvider.ts # Dependency diagnostics
+│   │   ├── codeActionProvider.ts # Code action provider for fixes
+│   │   ├── securityViewProvider.ts # Security webview provider
+│   │   └── index.ts          # Provider exports
+│   ├── webview/              # Webview components for modern UI
+│   │   ├── LoginWebviewProvider.ts    # Login interface
+│   │   ├── SecurityWebviewProvider.ts # Security dashboard
+│   │   ├── UsageBarWebviewProvider.ts # Usage tracking display
+│   │   └── index.ts          # Webview exports
+│   ├── utils/                # Utility functions
+│   │   ├── config.ts         # Extension configuration
+│   │   ├── logger.ts         # Centralized logging
+│   │   ├── fileExclusions.ts # File exclusion management
+│   │   ├── usageService.ts   # Usage tracking service
+│   │   └── index.ts          # Utility exports
+│   └── index.ts              # Main exports
+├── media/                    # Static assets for webviews
+│   ├── login.css             # Login interface styles
+│   ├── login.js              # Login interface scripts
+│   ├── security.css          # Security dashboard styles
+│   ├── security.js           # Security dashboard scripts
+│   ├── usageBar.css          # Usage bar styles
+│   ├── usageBar.js           # Usage bar scripts
+│   └── icons.js              # Icon definitions
 ├── package.json              # Extension manifest and dependencies
 ├── tsconfig.json            # TypeScript configuration
 ├── webpack.config.js        # Build configuration
 └── README.md               # This file
 ```
-
-### Testing Your Changes
-
-1. **Manual Testing**
-
-   - Open test files in different languages
-   - Verify security issues are detected correctly
-   - Test dependency scanning with various package managers
-
-2. **Test Indexing System**
-
-   - Build index and verify statistics
-   - Test similar code pattern detection
-   - Verify incremental updates work correctly
-
-3. **Performance Testing**
-   - Test with large files and codebases
-   - Verify caching behavior
-   - Test network failure scenarios
-
-### Debugging
-
-1. **Enable Debug Logging**
-
-   - Set `vulnzap.enableDebugLogging: true` in settings
-   - View → Output → Select "VulnZap"
-
-2. **Extension Logs**
-
-   - Check Console for error messages in Extension Development Host
-   - Monitor API call success/failure
-
-3. **VS Code Debugging**
-   - Set breakpoints in TypeScript files
-   - Use F5 to debug the extension
 
 ## 🤝 Contributing
 
@@ -398,51 +318,22 @@ We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) f
 
 ## 📊 Performance & Limits
 
-- **File Size Limit**: 1MB per file for analysis
-- **File Line Limit**: 2000 lines per file
+- **File Size Limit**: 1MB per file for analysis (automatically enforced)
+- **File Line Limit**: 2000 lines per file (automatically enforced)
 - **Max Issues per File**: 100 issues to prevent overwhelming output
-- **Caching Duration**: Configurable dependency cache (default: 5 days)
-- **Memory Usage**: Optimized for large codebases with chunked indexing
-- **Network Failures**: Graceful fallback to pattern matching
+- **Dependency Caching**: Intelligent caching system with change detection
+- **Memory Usage**: Optimized for large codebases with efficient scanning
+- **Network Failures**: Graceful error handling and user feedback
+- **File Exclusions**: Comprehensive exclusion system for non-code files
 
 ## 🔒 Security & Privacy
 
+- **Secure Authentication**: OAuth-based login with secure token storage
 - **API Keys**: Stored securely in VS Code's encrypted storage
 - **Code Privacy**: Code sent to VulnZap API for analysis only
 - **No Data Storage**: Your code is never permanently stored on external servers
-- **Local Fallback**: Works with pattern-based detection when API is unavailable
 - **Configurable Scanning**: All features can be enabled/disabled per preference
-
-## 🧪 Supported Vulnerability Types
-
-### OWASP Top 10 Coverage
-
-- **A01: Broken Access Control** - Authorization bypass, privilege escalation
-- **A02: Cryptographic Failures** - Weak encryption, insecure storage
-- **A03: Injection** - SQL, NoSQL, command, LDAP injection
-- **A04: Insecure Design** - Design flaws and threat modeling gaps
-- **A05: Security Misconfiguration** - Default configs, verbose errors
-- **A06: Vulnerable Components** - Outdated dependencies (fully supported)
-- **A07: Authentication Failures** - Weak authentication, session management
-- **A08: Software Integrity** - Insecure CI/CD, auto-update without verification
-- **A09: Logging Failures** - Insufficient logging, log injection
-- **A10: Server-Side Request Forgery** - SSRF vulnerabilities
-
-### Additional Security Patterns
-
-- **Cross-Site Scripting (XSS)** - Reflected, stored, DOM-based
-- **Cross-Site Request Forgery (CSRF)** - Missing tokens, weak validation
-- **Information Disclosure** - Debug info, stack traces, sensitive data
-- **Business Logic Flaws** - Race conditions, workflow bypasses
-- **API Security** - Authentication, rate limiting, input validation
-
-### Pattern-Based Detection
-
-- **SQL Injection**: Template literals, string concatenation in queries
-- **XSS**: innerHTML assignments, eval usage, unsafe DOM manipulation
-- **Hardcoded Secrets**: API keys, tokens, Base64 strings, cryptographic keys
-- **Weak Crypto**: MD5, SHA1, DES, RC4 usage
-- **Unsafe Functions**: Command execution, system calls, shell operations
+- **Usage Tracking**: Transparent usage monitoring
 
 ## 🆘 Troubleshooting
 
@@ -464,17 +355,17 @@ We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) f
 
 **"Files not being scanned"**
 
-1. Check if file type is supported (JS/TS/Python/Java/PHP/C#)
+1. Check if file type is supported (JS/TS/React/Python/Java/PHP/C#)
 2. Verify file isn't in excluded list (package.json, config files, etc.)
 3. Use `Security: Show File Exclusion Information` to see exclusion rules
 4. Add custom patterns to `vulnzap.excludeFilePatterns` if needed
 
 **"No security issues detected"**
 
-1. Verify file language is supported (JS/TS/Python/Java)
-2. Check if real-time scanning is enabled
+1. Verify file language is supported (JS/TS/React/Python/Java/PHP/C#)
+2. Check if you're logged in to VulnZap
 3. Try manual scan: `Security: Scan Current File`
-4. Review confidence threshold settings (default: 80%)
+4. Check network connectivity for API calls
 
 **"Dependency scanning not working"**
 
@@ -483,13 +374,6 @@ We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) f
 3. Verify `vulnzap.enableDependencyScanning` is true
 4. Try `Security: Force Dependency Scan (Ignore Cache)`
 
-**"Indexing issues"**
-
-1. Check if indexing is enabled: `vulnzap.enableVectorIndexing`
-2. Try rebuilding index: `Security: Build Security Index`
-3. View statistics: `Security: View Index Statistics`
-4. Clear and rebuild if corrupted: `Security: Clear Security Index`
-
 ### Getting Support
 
 - 📝 **GitHub Issues**: [Report bugs and request features](https://github.com/VulnZap/vulnzap-vscode-extention/issues)
@@ -497,17 +381,7 @@ We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) f
 - 🔧 **API Status**: Verify VulnZap API service status
 - 💬 **Community**: Join discussions in our GitHub repository
 
-## 🔧 Configuration & File Exclusions
-
-### VS Code Settings
-
-VulnZap can be customized through VS Code settings (`Preferences: Open Settings (UI)` → Search "VulnZap"):
-
-- **vulnzap.enabled**: Enable/disable security scanning
-- **vulnzap.vulnzapApiKey**: Your VulnZap API key for enhanced analysis
-- **vulnzap.maxFileSizeBytes**: Maximum file size to scan (default: 1MB)
-- **vulnzap.maxFileLines**: Maximum lines per file to scan (default: 2000)
-- **vulnzap.excludeFilePatterns**: Additional file patterns to exclude from scanning
+## 🔧 File Exclusions & Performance
 
 ### File Exclusions
 
@@ -537,23 +411,31 @@ VulnZap automatically excludes common non-code files from security scanning:
 
 ### Upcoming Features
 
-- **Additional Language Support**: Go, Rust, C++, PHP support
-- **Enhanced AI Models**: Support for additional AI providers
+- **Additional Language Support**: Go, Rust, C++, Ruby, Kotlin support
+- **Enhanced Webview Features**: Advanced filtering, sorting, and export options
 - **Custom Rules**: User-defined security patterns and rules
 - **Team Collaboration**: Shared configurations and rule sets
 - **CI/CD Integration**: GitHub Actions, GitLab CI support
-- **Advanced Reporting**: Security dashboards and metrics
-- **IDE Integration**: Support for JetBrains IDEs, Vim, Emacs
+- **Advanced Reporting**: Detailed security metrics and trends
 
-### Current Version: 0.2.1
+## 🆕 What's New in v0.2.9
 
-- ✅ VulnZap API integration
-- ✅ Advanced dependency scanning with caching
-- ✅ Codebase indexing and vector analysis
-- ✅ AST-guided precision for JavaScript/TypeScript
-- ✅ Unified security view with dependency management
-- ✅ Pattern-based fallback detection
-- ✅ Performance optimizations and file size limits
+### Major UI Overhaul
+- **Modern Webview Interface**: Complete redesign with integrated login system
+- **Real-time Usage Tracking**: Monitor your API usage and quotas directly in VS Code
+- **Interactive Security Dashboard**: Comprehensive view of all security issues with one-click fixes
+
+### Enhanced Dependency Management
+- **11+ Package Managers**: Support for npm, pip, go, cargo, maven, gradle, composer, rubygems, nuget, cocoapods, and yarn
+- **Smart Caching System**: Intelligent dependency change detection
+- **One-click Fixes**: Direct dependency updates with terminal command generation
+- **Batch Vulnerability Scanning**: Efficient API-based vulnerability detection
+
+### Improved Developer Experience
+- **Seamless Authentication**: OAuth-based login with secure session management
+- **Comprehensive File Exclusions**: Smart exclusion of 100+ file types and patterns
+- **Enhanced Logging**: Detailed debug information for troubleshooting
+- **Performance Optimizations**: Better handling of large codebases
 
 ## 📄 License
 
@@ -561,6 +443,6 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ---
 
-**Made with ❤️ by the VulnZap Team**
+**Made with ❤️ by the Plawlabs Team**
 
 _Secure your code, one vulnerability at a time._

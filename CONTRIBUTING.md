@@ -20,7 +20,7 @@ VulnZap is a community-driven project, and we welcome contributions from develop
 
 ## 📜 Code of Conduct
 
-This project and everyone participating in it is governed by our Code of Conduct. By participating, you are expected to uphold this code. Please report unacceptable behavior to [conduct@vulnzap.com](mailto:conduct@vulnzap.com).
+This project and everyone participating in it is governed by our Code of Conduct. By participating, you are expected to uphold this code. Please report unacceptable behavior to [anirudh@plawlabs.com](mailto:anirudh@plawlabs.com).
 
 ### Our Pledge
 - Be welcoming to newcomers
@@ -395,7 +395,7 @@ Add screenshots to help explain your changes.
 
 **DO NOT** create public issues for security vulnerabilities. Instead:
 
-1. Email [security@vulnzap.com](mailto:security@vulnzap.com)
+1. Email [anirudh@plawlabs.com](mailto:anirudh@plawlabs.com)
 2. Include detailed description and reproduction steps
 3. Wait for confirmation before public disclosure
 4. Follow responsible disclosure guidelines
@@ -441,7 +441,7 @@ When adding new vulnerability detection:
 
 - **GitHub Issues** - For bugs and feature requests
 - **GitHub Discussions** - For questions and ideas
-- **Email** - [hello@vulnzap.com](mailto:hello@vulnzap.com) for general inquiries
+- **Email** - [anirudh@plawlabs.com](mailto:anirudh@plawlabs.com) for general inquiries
 
 ### Community Guidelines
 
@@ -464,10 +464,10 @@ If you have any questions about contributing, please:
 1. Check this guide first
 2. Search existing GitHub discussions
 3. Create a new discussion or issue
-4. Email us at [contribute@vulnzap.com](mailto:contribute@vulnzap.com)
+4. Email us at [support@plawlabs.com](mailto:support@plawlabs.com)
 
 ---
 
 **Happy contributing!** 🚀
 
-*Last updated: December 2024* 
+*Last updated: July 2025* 

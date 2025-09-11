@@ -60,7 +60,7 @@ export class VulnZapCodeActionProvider implements vscode.CodeActionProvider {
 
       // Create the code action
       const action = new vscode.CodeAction(
-`Fix: ${diagnostic.message}`,
+`zap: ${diagnostic.message}`,
         vscode.CodeActionKind.QuickFix
       );
 
@@ -70,16 +70,15 @@ export class VulnZapCodeActionProvider implements vscode.CodeActionProvider {
       // Create the edit that will replace the problematic code
       const edit = new vscode.WorkspaceEdit();
       
-      // For now, replace the entire line with the suggested fix
-      // In the future, we could be more precise about what to replace
-      const lineRange = document.lineAt(diagnostic.range.start.line).range;
+      // Use the precise range from the diagnostic for column-accurate replacement
+      const preciseRange = diagnostic.range;
       const currentLine = document.lineAt(diagnostic.range.start.line).text;
       
-      // Try to preserve indentation
+      // Try to preserve indentation from the start of the line
       const indentation = this.extractIndentation(currentLine);
       const indentedSuggestedCode = this.applyIndentation(suggestedCode, indentation);
       
-      edit.replace(document.uri, lineRange, indentedSuggestedCode);
+      edit.replace(document.uri, preciseRange, indentedSuggestedCode);
       action.edit = edit;
 
       Logger.debug(`Created code action for: ${diagnostic.message}`);
